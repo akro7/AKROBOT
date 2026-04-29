@@ -51,7 +51,7 @@ from telegram.error import TelegramError
 
 # ─── إعدادات أساسية ────────────────────────────────────────────────────────────
 
-TOKEN = os.getenv("BOT_TOKEN", "8741880031:AAEAbGXrk1prG1arCA6V1uHZReIE-a_0Tag")
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [5921061565]  # أضف Chat ID بتاعك هنا للحصول على أوامر الأدمن مثل: [123456789]
 
 DOWNLOADS_DIR = Path("downloads")
