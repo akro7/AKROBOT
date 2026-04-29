@@ -10,6 +10,8 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    # نحدد وقت أقصى للعملية (مثلاً 5 ساعات ونصف) قبل أن يغلقها GitHub
+    timeout-minutes: 330 
 
     steps:
       - name: Checkout Code
@@ -28,15 +30,18 @@ jobs:
       - name: Install & Update Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          # تحديث yt-dlp ضروري جداً لأن يوتيوب يغير خوارزمياته يومياً
-          pip install --upgrade python-telegram-bot yt-dlp
+          # تثبيت أحدث نسخة من المكتبات لضمان فك شفرات الروابط الجديدة
+          pip install --upgrade python-telegram-bot yt-dlp setuptools
 
       - name: Create Downloads Directory
         run: mkdir -p downloads
 
-      - name: Run AKRO Bot
+      - name: Run AKRO Bot with Auto-Restart
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          # إضافة علم (Flag) لضمان عدم توقف الأكشن فجأة
-          python bot/bot.py
+          # حلقة تكرارية بسيطة: لو البوت كراش (وقع) يرجع يفتح تاني لوحده
+          until python bot/bot.py; do
+            echo "البوت توقف بشكل مفاجئ، جاري إعادة التشغيل خلال 5 ثوانٍ..."
+            sleep 5
+          done
