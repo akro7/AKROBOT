@@ -25,18 +25,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg aria2
 
-      - name: Install Python Dependencies
+      - name: Install & Update Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          # تثبيت المكتبات مباشرة إذا لم يوجد ملف requirements.txt
-          pip install python-telegram-bot yt-dlp
+          # تحديث yt-dlp ضروري جداً لأن يوتيوب يغير خوارزمياته يومياً
+          pip install --upgrade python-telegram-bot yt-dlp
 
       - name: Create Downloads Directory
         run: mkdir -p downloads
 
       - name: Run AKRO Bot
         env:
-          # تأكد من إضافة التوكن في Settings > Secrets and variables > Actions
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
+          # إضافة علم (Flag) لضمان عدم توقف الأكشن فجأة
           python bot/bot.py
