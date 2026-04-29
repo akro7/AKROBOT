@@ -10,7 +10,6 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    # نحدد وقت أقصى للعملية (مثلاً 5 ساعات ونصف) قبل أن يغلقها GitHub
     timeout-minutes: 330 
 
     steps:
@@ -30,18 +29,26 @@ jobs:
       - name: Install & Update Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          # تثبيت أحدث نسخة من المكتبات لضمان فك شفرات الروابط الجديدة
-          pip install --upgrade python-telegram-bot yt-dlp setuptools
+          # تثبيت المكتبات مع دعم محاكاة المتصفح المتقدمة
+          pip install --upgrade python-telegram-bot setuptools yt-dlp
+          # إضافة مكتبة curl-cffi اللي بتساعد في تخطي حظر الحماية
+          pip install curl-cffi 
 
       - name: Create Downloads Directory
         run: mkdir -p downloads
+
+      - name: Patch Bot Code (Smart Fix)
+        run: |
+          # هذا الأمر يقوم بحقن إعدادات التخطي داخل ملف bot.py تلقائياً قبل التشغيل
+          sed -i "s/'quiet': True,/'quiet': True, 'impersonate': 'chrome', 'extractor_args': {'youtube': {'player_client': ['android', 'web']}}, 'nocheckcertificate': True,/g" bot/bot.py
 
       - name: Run AKRO Bot with Auto-Restart
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          # حلقة تكرارية بسيطة: لو البوت كراش (وقع) يرجع يفتح تاني لوحده
+          # تشغيل البوت مع آلية إعادة تشغيل وتنظيف
           until python bot/bot.py; do
-            echo "البوت توقف بشكل مفاجئ، جاري إعادة التشغيل خلال 5 ثوانٍ..."
+            echo "⚠️ تم اكتشاف توقف.. جاري تنظيف المجلد وإعادة التشغيل..."
+            rm -rf downloads/*
             sleep 5
           done
