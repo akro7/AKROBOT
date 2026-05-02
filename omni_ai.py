@@ -87,7 +87,11 @@ async def get_groq_response(prompt: str, image_url: str = None) -> str:
         return f"⚠️ خطأ في Groq: {e}"
 
 # ── محرك Claude (تحليل — دقيق) ───────────────────────────────────────────────
-async def get_claude_response(prompt: str) -> str:
+CLAUDE_AVAILABLE = True  # يتغير تلقائياً لو الرصيد خلص
+
+async def get_claude_response(prompt: str) -> tuple[str, bool]:
+    """يرجع (الرد، نجح؟)"""
+    global CLAUDE_AVAILABLE
     try:
         response = await claude_client.messages.create(
             model="claude-opus-4-5",
@@ -99,19 +103,30 @@ async def get_claude_response(prompt: str) -> str:
             ),
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.content[0].text
+        CLAUDE_AVAILABLE = True
+        return response.content[0].text, True
     except Exception as e:
-        return f"⚠️ خطأ في Claude: {e}"
+        err = str(e)
+        # رصيد منتهي أو مشكلة billing → عطّل Claude مؤقتاً
+        if "credit" in err.lower() or "balance" in err.lower() or "billing" in err.lower():
+            CLAUDE_AVAILABLE = False
+            log_status("Claude API: رصيد منتهٍ — سيُستخدم Groq كبديل", style=ERROR)
+        return err, False
 
 # ── الاختيار التلقائي للمحرك ──────────────────────────────────────────────────
 async def smart_response(prompt: str) -> tuple[str, str]:
     """يرجع (الرد، اسم_المحرك_المستخدم)"""
     engine = await pick_engine(prompt)
-    if engine == "claude":
-        reply = await get_claude_response(prompt)
-    else:
-        reply = await get_groq_response(prompt)
-    return reply, engine
+
+    if engine == "claude" and CLAUDE_AVAILABLE:
+        reply, ok = await get_claude_response(prompt)
+        if ok:
+            return reply, "claude"
+        # Claude فشل → fallback لـ Groq
+        log_status("Fallback → Groq", style=ERROR)
+
+    reply = await get_groq_response(prompt)
+    return reply, "groq"
 
 # ── /start ────────────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -151,9 +166,25 @@ async def ask_claude(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if not CLAUDE_AVAILABLE:
+        await update.message.reply_text(
+            "⚠️ *رصيد Claude منتهٍ*\n"
+            "جاري التحويل لـ Groq.\n"
+            "شحن الرصيد: https://console.anthropic.com/settings/billing",
+            parse_mode="Markdown"
+        )
+        msg = await update.message.reply_text("⚡ Groq يجيب...")
+        reply = await get_groq_response(prompt)
+        await msg.edit_text(f"⚡ *Groq (بديل):*\n\n{reply}", parse_mode="Markdown")
+        return
+
     msg = await update.message.reply_text("🧠 Claude يفكر...")
-    reply = await get_claude_response(prompt)
-    await msg.edit_text(f"🧠 *Claude:*\n\n{reply}", parse_mode="Markdown")
+    reply, ok = await get_claude_response(prompt)
+    if ok:
+        await msg.edit_text(f"🧠 *Claude:*\n\n{reply}", parse_mode="Markdown")
+    else:
+        fallback = await get_groq_response(prompt)
+        await msg.edit_text(f"⚡ *Groq (بديل):*\n\n{fallback}", parse_mode="Markdown")
 
 # ── /gen (توليد صور) ─────────────────────────────────────────────────────────
 async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
