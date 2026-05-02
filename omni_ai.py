@@ -56,8 +56,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     log_status(f"Connected: {user.first_name} [{user.id}]")
     await update.message.reply_text(
-        "⚡ OMNI-AI ACTIVATED ⚡\n\n"
-        "المحرك: Groq (llama-3.3-70b)\n\n"
+        "⚡ GROK-AI ACTIVATED ⚡\n\n"
+        "المحرك: Groq (AKRO-X-👻😂❤️‍🩹)\n\n"
         "ابعت أي سؤال وأنا هرد عليك فوراً 🚀"
     )
 
