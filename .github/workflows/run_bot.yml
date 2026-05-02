@@ -4,13 +4,13 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # تشغيل يدوي من GitHub
+  workflow_dispatch:
 
 jobs:
   run-bot:
     name: Run Telegram Bot
     runs-on: ubuntu-latest
-    timeout-minutes: 350  # أقصى وقت مسموح في GitHub Actions
+    timeout-minutes: 350
 
     steps:
       - name: 📥 Checkout Repository
@@ -29,8 +29,7 @@ jobs:
 
       - name: 🚀 Launch OMNI-AI Bot
         env:
-          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
-          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          GROQ_KEY: ${{ secrets.GROQ_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: |
           python omni_ai.py
