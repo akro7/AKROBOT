@@ -7,7 +7,7 @@ from groq import Groq
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from gtts import gTTS # للملفات الصوتية
+from gtts import gTTS
 
 console = Console()
 PRIMARY = "#00F0FF"
@@ -19,22 +19,21 @@ def log_status(message, style=PRIMARY):
 # الإعدادات
 GROQ_KEY       = os.environ.get("GROQ_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-# ضع هنا رابط فيديو أو GIF ليظهر كخلفية متحركة عند الترحيب
-WELCOME_GIF = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJueGZ3bmZpZzRyeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKMGpxxS05S9YFq/giphy.gif"
+# استخدام الملف المحلي الذي رفعته على GitHub
+WELCOME_VIDEO_PATH = "welcome.mp4"
 
 if not all([GROQ_KEY, TELEGRAM_TOKEN]):
     raise EnvironmentError("❌ Missing GROQ_KEY or TELEGRAM_TOKEN")
 
 client = Groq(api_key=GROQ_KEY)
 
-# دالة الرد النصي وفهم الصور
 async def get_groq_response(prompt: str, image_url: str = None) -> str:
     try:
         model = "llama-3.3-70b-versatile"
         messages = [{"role": "system", "content": "You are OMNI-AI, a supreme intelligence designed by Ahmed (AKRO). Answer in the same language the user writes in."}]
         
         if image_url:
-            model = "llama-3.2-11b-vision-preview" # موديل الرؤية
+            model = "llama-3.2-11b-vision-preview"
             messages.append({
                 "role": "user",
                 "content": [
@@ -59,22 +58,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     log_status(f"Connected: {user.first_name} [{user.id}]")
     
-    # إرسال الخلفية المتحركة (فيديو أو GIF) مع رسالة الترحيب الخاصة بك
-    await update.message.reply_animation(
-        animation=WELCOME_GIF,
-        caption=(
-            "⚡ GROK-AI ACTIVATED ⚡\n\n"
-            "المحرك: Groq (AKRO-X-👻😂❤️‍🩹)\n\n"
-            "أنا الآن أدعم:\n"
-            "1️⃣ الرد الذكي 🧠\n"
-            "2️⃣ فهم الصور (أرسل صورة) 🖼\n"
-            "3️⃣ إنشاء صور (/gen نص)\n"
-            "4️⃣ تحويل النص لصوت (/voice نص)\n\n"
-            "ابعت أي سؤال وأنا هرد عليك فوراً 🚀"
-        )
+    caption_text = (
+        "⚡ GROK-AI ACTIVATED ⚡\n\n"
+        "المحرك: Groq (AKRO-X-👻😂❤️‍🩹)\n\n"
+        "أنا الآن أدعم:\n"
+        "1️⃣ الرد الذكي 🧠\n"
+        "2️⃣ فهم الصور (أرسل صورة) 🖼\n"
+        "3️⃣ إنشاء صور (/gen نص)\n"
+        "4️⃣ تحويل النص لصوت (/voice نص)\n\n"
+        "ابعت أي سؤال وأنا هرد عليك فوراً 🚀"
     )
 
-# دالة إنشاء الصور
+    try:
+        # التأكد من وجود ملف الفيديو قبل إرساله
+        if os.path.exists(WELCOME_VIDEO_PATH):
+            with open(WELCOME_VIDEO_PATH, "rb") as video:
+                await update.message.reply_video(
+                    video=video,
+                    caption=caption_text
+                )
+        else:
+            await update.message.reply_text(caption_text)
+    except Exception as e:
+        log_status(f"Media Error: {e}", style=ERROR)
+        await update.message.reply_text(caption_text)
+
 async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt:
@@ -86,7 +94,6 @@ async def generate_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(photo=image_url, caption=f"✅ تم إنشاء: {prompt}")
     await msg.delete()
 
-# دالة تحويل النص لصوت
 async def text_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args)
     if not text:
@@ -98,17 +105,14 @@ async def text_to_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_voice(voice=open("voice.mp3", "rb"))
     os.remove("voice.mp3")
 
-# معالجة الرسائل (نص أو صور)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.photo:
-        # التعامل مع الصور
         photo_file = await update.message.photo[-1].get_file()
         image_url = photo_file.file_path
         status_msg = await update.message.reply_text("🧐 جاري تحليل الصورة...")
         response = await get_groq_response(update.message.caption or "حلل هذه الصورة", image_url)
         await status_msg.edit_text(response)
     else:
-        # التعامل مع النصوص
         user_input = update.message.text
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         status_msg = await update.message.reply_text("🌀 جاري المعالجة...")
@@ -125,4 +129,6 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, handle_message))
     
     console.print("[bold cyan]System is Live with Multimedia Support.[/bold cyan]")
-    app.run_polling()
+    
+    # استخدام drop_pending_updates=True لحل مشكلة الـ Conflict وتجاوز التحديثات القديمة
+    app.run_polling(drop_pending_updates=True)
