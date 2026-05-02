@@ -1,3 +1,4 @@
-aiogram
-google-generativeai
-asyncio
+python-telegram-bot==20.7
+openai==1.12.0
+google-generativeai==0.4.1
+rich==13.7.0
