@@ -1,0 +1,36 @@
+name: 🤖 OMNI-AI Bot Runner
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # تشغيل يدوي من GitHub
+
+jobs:
+  run-bot:
+    name: Run Telegram Bot
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # أقصى وقت مسموح في GitHub Actions
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📦 Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🚀 Launch OMNI-AI Bot
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: |
+          python omni_ai.py
