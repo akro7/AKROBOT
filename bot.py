@@ -117,7 +117,7 @@ def start(message):
         "أنا البوت المدمج جاهز للهزار والخدمة 🤖⚡\n\n"
         "📌 *الأوامر المتاحة:*\n"
         "• `أضف: كلمة = رد` — علمني رد جديد\n"
-        "• `قول [اسم]: كلام` — أقول حاجة باسم حد\n"
+        "• `قول محمد` أو `قول أي كلام` — البوت يقوله مباشرة\n"
         "• `/list` — شوف الردود المحفوظة\n"
         "• `/del كلمة` — احذف رد محفوظ\n"
         "• `/help` — قائمة الأوامر",
@@ -130,8 +130,8 @@ def help_cmd(message):
         "🤖 *أوامر البوت:*\n\n"
         "📝 *التعليم:*\n"
         "`أضف: كلمة = الرد` — تعليم رد جديد\n\n"
-        "🗣️ *قول باسم حد:*\n"
-        "`قول اسم: الكلام` — البوت يقول الكلام وينسبه لحد\n\n"
+        "🗣️ *قول أي كلام:*\n"
+        "`قول محمد` أو `قول أي جملة` — البوت يقولها مباشرة\n\n"
         "📋 *عرض الردود:*\n"
         "`/list` — شوف كل الردود\n\n"
         "🗑️ *حذف رد:*\n"
@@ -242,31 +242,26 @@ def teach_bot(message):
         bot.reply_to(message, f"❌ حصل خطأ: {str(e)}")
 
 # ─────────────────────────────────────────
-#  ميزة "قول [اسم]: كلام" - الجديدة
+#  ميزة "قول [أي كلام]" - مباشر بدون فورمات
 # ─────────────────────────────────────────
-@bot.message_handler(func=lambda m: m.text and re.match(r'^قول\s+\S+\s*:', m.text))
-def say_as(message):
+@bot.message_handler(func=lambda m: m.text and re.match(r'^قول\s+.+', m.text.strip()))
+def say_direct(message):
     try:
-        # استخراج الاسم والكلام
-        match = re.match(r'^قول\s+(.+?)\s*:\s*(.+)$', message.text.strip(), re.DOTALL)
-        if not match:
-            bot.reply_to(message, "⚠️ اكتبها كدا: `قول اسم: الكلام`", parse_mode='Markdown')
+        # استخراج الكلام بعد كلمة "قول"
+        text = re.sub(r'^قول\s+', '', message.text.strip(), count=1).strip()
+
+        if not text:
+            bot.reply_to(message, "⚠️ اكتب بعد قول الكلام اللي تقوله!")
             return
 
-        name = match.group(1).strip()
-        speech = match.group(2).strip()
+        # البوت يقول الكلام مباشرة
+        bot.send_message(message.chat.id, text)
 
-        # رد البوت منسوب للاسم ده
-        bot.send_message(
-            message.chat.id,
-            f"🗣️ *{name}:*\n{speech}",
-            parse_mode='Markdown'
-        )
         # احذف رسالة الأمر الأصلية لو البوت أدمن
         try:
             bot.delete_message(message.chat.id, message.message_id)
         except:
-            pass  # لو مش أدمن، مش مشكلة
+            pass
 
     except Exception as e:
         bot.reply_to(message, f"❌ حصل خطأ: {str(e)}")
