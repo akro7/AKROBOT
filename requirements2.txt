@@ -1,11 +1,14 @@
+# الأساسيات للبوت والاتصال
 pyTelegramBotAPI
+requests>=2.31.0
+beautifulsoup4
+lxml
+
+# معالجة الريكفري وتوليد الـ Device Tree
 twrpdtgen
 gitpython
-requests>=2.31.0
+
+# محركات التحميل (التحميل الذكي)
 yt-dlp>=2024.1.0
-
-# اختياري - Google Drive (ملفات كبيرة)
 gdown>=5.1.0
-
-# اختياري - Mega.nz
 mega.py>=1.0.8
