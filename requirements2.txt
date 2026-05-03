@@ -1,3 +1,11 @@
 pyTelegramBotAPI
 twrpdtgen
 gitpython
+requests>=2.31.0
+yt-dlp>=2024.1.0
+
+# اختياري - Google Drive (ملفات كبيرة)
+gdown>=5.1.0
+
+# اختياري - Mega.nz
+mega.py>=1.0.8
