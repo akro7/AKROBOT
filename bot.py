@@ -4,18 +4,20 @@ import json
 import os
 import re
 import time
+from collections import defaultdict
 
 # ========================================
-#   AKRO BOT v2.0 - by Ahmed (AKRO)
+#   AKRO BOT v3.0 - by Ahmed (AKRO)
 # ========================================
 
 TOKEN = os.getenv('BOT_TOKEN') or '7721384317:AAHaTZ-iM3RhBmjBgxdaN84ah3DjKUU_LT0'
 bot = telebot.TeleBot(TOKEN)
-DATA_FILE   = 'memory.json'
-PEOPLE_FILE = 'people.json'
+DATA_FILE    = 'memory.json'
+PEOPLE_FILE  = 'people.json'
+LEARN_FILE   = 'learned.json'   # تعلم من أسلوب الأشخاص
 
 # ══════════════════════════════════════════
-#  ① قاعدة الأشخاص  (people.json)
+#  ① قاعدة الأشخاص
 # ══════════════════════════════════════════
 def load_people():
     if os.path.exists(PEOPLE_FILE):
@@ -37,7 +39,7 @@ def save_people(data):
 people_db = load_people()
 
 # ══════════════════════════════════════════
-#  ② قاموس الردود  (memory.json)
+#  ② قاموس الردود
 # ══════════════════════════════════════════
 DEFAULT_RESPONSES = {
     "السلام":      "وعليكم السلام يا برنس الليالي! منور الجروب والله ⚡️",
@@ -55,6 +57,21 @@ DEFAULT_RESPONSES = {
     "نوم":         "تصبح على خير يا حبيب، أحلام وردية 🌙😴",
     "تعال":        "أنا هنا يا سيدي خطوة وسط 😂⚡",
     "كلام":        "كلام كلام كلام! يلا جيب الكلام المفيد 😂",
+    "مشكلة":       "قولي إيه المشكلة يا صاحبي، البوت في الخدمة 🛠️",
+    "مش شغال":    "ربما في مشكلة تقنية! جرب تاني أو راجع الأوامر 🔧",
+    "اخبارك":      "أخباري زي الورد طول ما الجروب حلو 🌹 وانت؟",
+    "ايه الاخبار": "أخبار تمام! في إيه الجديد عندك؟ 😄",
+    "حلو":         "إنت الأحلى بصراحة 😂❤️",
+    "جميل":        "ومنك للبنين يا كبير 😂✨",
+    "عظيم":        "بالظبط كده! عظيم فعلاً 💪🔥",
+    "يسطا":        "يسطا ايه يا عم، قول اللي عندك 😂",
+    "والله":       "والله الله يا باشا 😂",
+    "لا":          "لا إيه يا عم؟ قول اللي عندك كامل 😄",
+    "ايوه":        "تمام تمام، كمّل كلامك 😄👍",
+    "بكره":        "بكره حلو إن شاء الله، خلينا نشوف 🌟",
+    "النهارده":    "النهارده يوم جميل زيك! 😄☀️",
+    "ليه":         "سؤال كبير! إيه اللي محتاج تعرفه بالظبط؟ 🤔",
+    "ازاي":        "الطريقة سهلة! قولي أكتر عشان أساعدك 😊",
 }
 
 def load_data():
@@ -79,7 +96,143 @@ def save_data(data):
 responses = load_data()
 
 # ══════════════════════════════════════════
-#  ③ ردود الفكاهة
+#  ③ نظام التعلم من أسلوب الأشخاص
+# ══════════════════════════════════════════
+def load_learned():
+    if os.path.exists(LEARN_FILE):
+        try:
+            with open(LEARN_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_learned(data):
+    try:
+        with open(LEARN_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except:
+        pass
+
+# learned_styles = { "user_id": { "name": "...", "phrases": [...], "style_words": [...] } }
+learned_styles = load_learned()
+
+def learn_from_message(message):
+    """يتعلم من رسائل الأشخاص ويخزن أسلوبهم"""
+    if not message.text or len(message.text) < 3:
+        return
+    uid = str(message.from_user.id)
+    name = message.from_user.first_name or "مجهول"
+    text = message.text.strip()
+
+    # تجاهل الأوامر
+    if text.startswith('/') or text.startswith('أضف') or text.startswith('قول'):
+        return
+
+    if uid not in learned_styles:
+        learned_styles[uid] = {"name": name, "phrases": [], "style_words": [], "msg_count": 0}
+
+    learned_styles[uid]["name"] = name
+    learned_styles[uid]["msg_count"] = learned_styles[uid].get("msg_count", 0) + 1
+
+    # احفظ آخر 30 جملة
+    phrases = learned_styles[uid]["phrases"]
+    phrases.append(text)
+    if len(phrases) > 30:
+        phrases.pop(0)
+    learned_styles[uid]["phrases"] = phrases
+
+    # استخرج كلمات مميزة (أكتر من 3 حروف)
+    words = [w for w in text.split() if len(w) > 3 and not w.startswith('/')]
+    style_words = learned_styles[uid]["style_words"]
+    style_words.extend(words)
+    # احتفظ بأكثر 50 كلمة متكررة
+    if len(style_words) > 100:
+        # احتفظ بالكلمات الأكثر تكراراً
+        from collections import Counter
+        common = [w for w, _ in Counter(style_words).most_common(50)]
+        learned_styles[uid]["style_words"] = common
+    else:
+        learned_styles[uid]["style_words"] = style_words
+
+    save_learned(learned_styles)
+
+def mimic_user(user_id):
+    """يقلد أسلوب شخص معين"""
+    uid = str(user_id)
+    if uid not in learned_styles:
+        return None
+    data = learned_styles[uid]
+    if not data["phrases"]:
+        return None
+    # رجّع جملة عشوائية من جمله
+    phrase = random.choice(data["phrases"])
+    name = data["name"]
+    templates = [
+        f"😂 {name} كان بيقول: \"{phrase}\"",
+        f"👀 فاكر لما {name} قال: \"{phrase}\" ؟ 😂",
+        f"📜 ده كلام {name} مش كلامي 😂: \"{phrase}\"",
+        f"🎤 {name} صاحب جملة: \"{phrase}\" 😂",
+    ]
+    return random.choice(templates)
+
+# ══════════════════════════════════════════
+#  ④ الإيموجي ريأكت على الكلام
+# ══════════════════════════════════════════
+REACT_RULES = [
+    # (كلمات تطابق, احتمال, قائمة ردود)
+    (["ههه","هههه","😂","😹","wkwk","lol","كوميدي","مضحك","نكتة"],
+     0.6, ["😂","🤣","💀","😭😂","😂💀","🤣🔥"]),
+
+    (["حلو","جميل","رائع","عظيم","تمام","ممتاز","أحلى","برافو","ولا أجمل"],
+     0.5, ["❤️","🔥","👏","✨","💯","🫶"]),
+
+    (["بكره","غداً","المفروض","خطة","هنعمل","سنكمل"],
+     0.4, ["👍","💪","⚡","🙌","✅"]),
+
+    (["تعبان","مش تمام","زهقت","مللت","تعبت","صعب"],
+     0.5, ["❤️","🤗","💙","😔","🫂"]),
+
+    (["والله","والنبي","ربنا","الحمد لله","ان شاء الله","بسم الله"],
+     0.4, ["🙏","❤️","🤲","✨","💚"]),
+
+    (["صح","صحيح","بالظبط","معاك حق","أيوه صح"],
+     0.5, ["👍","✅","💯","🫡","☝️"]),
+
+    (["لا","مش","غلط","أنا مش","ما فيش"],
+     0.3, ["🤔","😅","👀","😬"]),
+
+    (["شكرا","مشكور","يسلمو","الله يسلمك"],
+     0.5, ["🤝","❤️","🙏","✨","💙"]),
+
+    (["اكل","أكل","هنتكل","عزومة","فطار","عشا","غدا"],
+     0.5, ["😋","🍽️","🤤","👀","😂"]),
+
+    (["نوم","بنام","هنام","تصبح على خير","ليلة سعيدة"],
+     0.4, ["😴","🌙","💤","✨"]),
+]
+
+def try_react(message):
+    """يحاول يعمل ريأكت إيموجي على الرسالة"""
+    if not message.text:
+        return
+    text = message.text.lower()
+    for keywords, chance, emojis in REACT_RULES:
+        if any(k in text for k in keywords):
+            if random.random() < chance:
+                emoji = random.choice(emojis)
+                try:
+                    bot.set_message_reaction(
+                        message.chat.id,
+                        message.message_id,
+                        [telebot.types.ReactionTypeEmoji(emoji)]
+                    )
+                except:
+                    pass  # لو مش مدعوم في السيرفر يعدي
+                return
+
+# ══════════════════════════════════════════
+#  ⑤ ردود الفكاهة
 # ══════════════════════════════════════════
 LAUGH_RESPONSES = [
     "ههههههه يموت يا جدع 😂💀",
@@ -92,6 +245,11 @@ LAUGH_RESPONSES = [
     "والنبي ده كلام ولا جاي يضحك علينا؟ 😂",
     "يامضحكني أنا دا جبت جبت 😂",
     "سم كمان خلي الناس تتريح 😂💀",
+    "ده إيه يا باشا ده 😂🔥 أنا مش قادر!",
+    "يا عيني يا عيني 😂😂 جمدت والله!",
+    "ده جاب جاب فعلاً 💀😂",
+    "أنا كمان بضحك معاك بصراحة 😂🤣",
+    "خلاص خلاص متقتلناش من الضحك 😂😂",
 ]
 
 RANDOM_JOKES = [
@@ -109,6 +267,12 @@ RANDOM_JOKES = [
     "يا عيني على اللي بيحاول يكون جدي هنا 😂",
     "النهارده الجروب أكتر من الأيام اللي فاتت 😂",
     "الله ينور على الفاضي اللي عنده وقت للكلام ده 😂",
+    "إنتو بتتكلموا ولا بتعزفوا موسيقى؟ 😂 ما بفهمش حاجة!",
+    "طيب وبعدين؟ 😂 إيه الخلاصة يا جماعة؟",
+    "يا سلام على الجروب الثقافي ده 😂🎓",
+    "أنا بسمعكم بجد بس مش عارف أتكلم 😂",
+    "اللي بيتكلم ده يعرف إنه بيتكلم؟ 😂",
+    "جروبنا ده تحفة فنية والله 😂🎨",
 ]
 
 INSULT_COMEBACKS = [
@@ -117,6 +281,9 @@ INSULT_COMEBACKS = [
     "يا راجل سيبني من الكلام ده 😂",
     "أنا بوت بس كلامك وجعني 😂",
     "أمال إيه؟ 😂",
+    "يا عم أنا بوت مش حاسس بس كلامك غلط 😅",
+    "اللي بتقوله ده يرجع عليك يا حبيبي 😂",
+    "أنا مش زعلان بس مش حلوة 😂",
 ]
 
 GREET_EXTRAS = [
@@ -125,10 +292,13 @@ GREET_EXTRAS = [
     "يا هلا هلا هلا 🎉",
     "البطل وصل 👑",
     "الكبير بيطل 😎",
+    "يا فرحتي بيك 🥳",
+    "ده اللي كنا مستنياه 😄⚡",
+    "حضرتك شرفتنا 🫡",
 ]
 
 # ══════════════════════════════════════════
-#  ④ تعليقات فكاهية قبل الاقتباس (QuotLy)
+#  ⑥ تعليقات اقتباس QuotLy
 # ══════════════════════════════════════════
 QUOTE_COMMENTS = [
     "⚠️ تحذير: الكلام ده هيتحفظ في سجلات الجروب للأبد 😂",
@@ -146,20 +316,28 @@ QUOTE_COMMENTS = [
     "💬 الكلام ده يستاهل لوحة شرف 😂",
     "🗿 خالد الكلام ده للأجيال الجاية 😂",
     "⚡ فلاش نيوز: شخص قال حاجة مهمة جداً هنا 😂",
+    "🎯 كلام في الصميم لازم يتحفظ 😂",
+    "📱 لقطة شاشة واجبة من هنا 😂",
+    "🧠 عقلية والله، سجلها قبل ما تتمسح 😂",
 ]
 
-# ألوان عشوائية لـ QuotLy
-QUOTE_COLORS = ["red", "blue", "green", "purple", "orange", "pink", "white", "random", "#cbafff", "#ff6b6b", "#4ecdc4"]
+QUOTE_COLORS = ["red", "blue", "green", "purple", "orange", "pink", "white", "random",
+                "#cbafff", "#ff6b6b", "#4ecdc4", "#ffd700", "#00bcd4", "#e91e63"]
 
-# ══════════════════════════════════════════
-#  دالة مساعدة: اعمل اقتباس QuotLy
-# ══════════════════════════════════════════
-def make_quote(message, color=None, extra_flags=""):
-    """بتبعت أمر /q لـ QuotLy على رسالة معينة"""
-    if not color:
-        color = random.choice(QUOTE_COLORS)
-    cmd = f"/q {color} {extra_flags}".strip()
-    bot.send_message(message.chat.id, cmd, reply_to_message_id=message.message_id)
+COLOR_MAP = {
+    "احمر": "red",    "أحمر": "red",
+    "ازرق": "blue",   "أزرق": "blue",
+    "اخضر": "green",  "أخضر": "green",
+    "بنفسجي": "purple",
+    "برتقالي": "orange",
+    "وردي": "pink",
+    "ابيض": "white",  "أبيض": "white",
+    "اسود": "black",  "أسود": "black",
+    "عشوائي": "random",
+    "ذهبي": "#ffd700",
+    "سماوي": "#00bcd4",
+    "زهري": "#e91e63",
+}
 
 # ══════════════════════════════════════════
 #  /start  و  /help
@@ -169,39 +347,38 @@ def start(message):
     name = message.from_user.first_name or "صاحبي"
     bot.reply_to(message,
         f"أهلاً يا {name}! 👋\n"
-        "أنا البوت المدمج جاهز للهزار والخدمة 🤖⚡\n\n"
-        "📌 *الأوامر المتاحة:*\n"
-        "• `أضف: كلمة = رد` — علمني رد جديد\n"
-        "• `قول أي كلام` — البوت يقوله مباشرة\n"
-        "• `عرف اسم: معلوماته` — حفظ شخص\n"
-        "• `مين اسم` — السؤال عن أي شخص\n"
-        "• `اقتبس` — اقتباس فكاهي عشوائي\n"
-        "• `/help` — قائمة كل الأوامر",
+        "أنا البوت الذكي AKRO v3 🤖⚡\n"
+        "بتعلم، بحفظ، وبهزر معاكم 😄\n\n"
+        "اكتب /help تعرف الأوامر 🎯",
         parse_mode='Markdown'
     )
 
 @bot.message_handler(commands=['help'])
 def help_cmd(message):
     bot.reply_to(message,
-        "🤖 *أوامر البوت:*\n\n"
+        "🤖 *أوامر البوت AKRO v3:*\n\n"
         "📝 *ردود مخصصة:*\n"
         "`أضف: كلمة = الرد`\n\n"
         "🗣️ *قول:*\n"
         "`قول أي كلام` — البوت يقوله مباشرة\n\n"
         "👤 *الأشخاص:*\n"
         "`عرف عماد: هو صاحبي من القاهرة`\n"
-        "`مين عماد` — السؤال عن أي شخص\n"
+        "`مين عماد` — السؤال عن شخص\n"
         "`/people` — كل الأشخاص المحفوظين\n"
         "`/delperson اسم` — احذف شخص\n\n"
-        "🎨 *اقتباسات QuotLy (رد على رسالة):*\n"
-        "`اقتبس` — اقتباس فكاهي بلون عشوائي\n"
-        "`اقتبس احمر` / `اقتبس ازرق` — بلون محدد\n"
-        "`اقتبس صورة` — اقتباس على شكل صورة\n"
-        "`اقتبس مع رد` — يحتفظ بالرد الأصلي\n\n"
-        "📋 *الردود:*\n"
-        "`/list` — شوف كل الردود\n"
-        "`/del كلمة` — احذف رد\n\n"
-        "📊 `/stats` — إحصائيات البوت",
+        "🎨 *اقتباسات (رد على رسالة):*\n"
+        "`اقتبس` — اقتباس بلون عشوائي\n"
+        "`اقتبس احمر` / `اقتبس ازرق` / `اقتبس وردي`\n"
+        "`اقتبس ذهبي` / `اقتبس سماوي` / `اقتبس زهري`\n"
+        "`اقتبس صورة` — اقتباس صورة\n"
+        "`اقتبس مع رد` — مع الرد الأصلي\n\n"
+        "🧠 *تعلم:*\n"
+        "`/mimic اسم` — يقلد أسلوب شخص\n"
+        "`/mystyle` — يوصف أسلوبك\n\n"
+        "📋 *إدارة:*\n"
+        "`/list` — كل الردود\n"
+        "`/del كلمة` — احذف رد\n"
+        "`/stats` — إحصائيات البوت",
         parse_mode='Markdown'
     )
 
@@ -241,11 +418,12 @@ def delete_response(message):
 def stats(message):
     custom = max(0, len(responses) - len(DEFAULT_RESPONSES))
     bot.reply_to(message,
-        f"📊 *إحصائيات البوت:*\n\n"
+        f"📊 *إحصائيات البوت AKRO v3:*\n\n"
         f"🧠 إجمالي الردود: `{len(responses)}`\n"
         f"📦 ردود افتراضية: `{len(DEFAULT_RESPONSES)}`\n"
         f"✏️ ردود مضافة: `{custom}`\n"
         f"👥 أشخاص محفوظين: `{len(people_db)}`\n"
+        f"🎓 أشخاص اتعلم منهم: `{len(learned_styles)}`\n"
         f"😂 نكات عشوائية: `{len(RANDOM_JOKES)}`\n\n"
         f"⚡ البوت شغال تمام!",
         parse_mode='Markdown'
@@ -283,6 +461,63 @@ def delete_person(message):
         bot.reply_to(message, f"❌ ما لقتش *{key}*", parse_mode='Markdown')
 
 # ══════════════════════════════════════════
+#  /mimic  /mystyle  — تقليد الأشخاص
+# ══════════════════════════════════════════
+@bot.message_handler(commands=['mimic'])
+def mimic_cmd(message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        bot.reply_to(message,
+            "⚠️ اكتب: `/mimic اسم الشخص`\n"
+            "مثال: `/mimic عمر`", parse_mode='Markdown')
+        return
+    query = parts[1].strip().lower()
+    # ابحث في المتعلمين
+    found = None
+    for uid, data in learned_styles.items():
+        if query in data["name"].lower():
+            found = (uid, data)
+            break
+    if not found:
+        bot.reply_to(message,
+            f"🤷 معرفش أسلوب *{query}* لسه!\n"
+            "لازم يكتب في الجروب الأول عشان أتعلم منه 😄",
+            parse_mode='Markdown')
+        return
+    uid, data = found
+    result = mimic_user(uid)
+    if result:
+        bot.reply_to(message, result)
+    else:
+        bot.reply_to(message, f"😅 {data['name']} مش كاتب كتير عشان أقلده!")
+
+@bot.message_handler(commands=['mystyle'])
+def my_style(message):
+    uid = str(message.from_user.id)
+    name = message.from_user.first_name or "أنت"
+    if uid not in learned_styles or learned_styles[uid].get("msg_count", 0) < 5:
+        bot.reply_to(message,
+            "😅 لسه مش كاتب كفاية عشان أعرف أسلوبك!\n"
+            "اكتب أكتر في الجروب وارجع بعدين 😄")
+        return
+    data = learned_styles[uid]
+    count = data.get("msg_count", 0)
+    words = data.get("style_words", [])
+    phrases = data.get("phrases", [])
+
+    from collections import Counter
+    top_words = [w for w, _ in Counter(words).most_common(5)] if words else []
+    sample = random.choice(phrases) if phrases else "—"
+
+    bot.reply_to(message,
+        f"🧠 *تحليل أسلوب {name}:*\n\n"
+        f"📊 عدد الرسائل: `{count}`\n"
+        f"🔤 كلماتك المفضلة: {', '.join(top_words) if top_words else 'مش واضح لسه'}\n"
+        f"💬 جملة من عندك: _{sample}_\n\n"
+        f"⚡ أسلوبك متسجل في الذاكرة 😄",
+        parse_mode='Markdown')
+
+# ══════════════════════════════════════════
 #  أضف: كلمة = رد
 # ══════════════════════════════════════════
 @bot.message_handler(func=lambda m: m.text and re.search(r'أضف\s*:', m.text))
@@ -310,7 +545,7 @@ def teach_bot(message):
         bot.reply_to(message, f"❌ حصل خطأ: {str(e)}")
 
 # ══════════════════════════════════════════
-#  قول [أي كلام]  — رد مباشر
+#  قول [أي كلام]
 # ══════════════════════════════════════════
 @bot.message_handler(func=lambda m: m.text and re.match(r'^قول\s+.+', m.text.strip()))
 def say_direct(message):
@@ -366,39 +601,30 @@ def who_is(message):
 
 # ══════════════════════════════════════════
 #  🎨 أوامر الاقتباس (QuotLy) — "اقتبس"
-#  لازم يكون رد على رسالة
+#  ✅ مُصحَّح: يبعت أمر /q على الرسالة المردود عليها
+#     مش على رسالة البوت نفسه
 # ══════════════════════════════════════════
-
-# خريطة الألوان العربية → إنجليزي
-COLOR_MAP = {
-    "احمر": "red", "أحمر": "red",
-    "ازرق": "blue", "أزرق": "blue",
-    "اخضر": "green", "أخضر": "green",
-    "بنفسجي": "purple",
-    "برتقالي": "orange",
-    "وردي": "pink",
-    "ابيض": "white", "أبيض": "white",
-    "اسود": "black", "أسود": "black",
-    "عشوائي": "random",
-}
-
 @bot.message_handler(func=lambda m: m.text and re.match(r'^اقتبس', m.text.strip()))
 def quote_handler(message):
     # لازم يكون رد على رسالة
     if not message.reply_to_message:
         bot.reply_to(message,
-            "⚠️ رد على الرسالة اللي عاوز تقتبسها الأول!\n"
-            "مثال: رد على رسالة واكتب `اقتبس` 😄",
+            "⚠️ *ازاي تستخدم الاقتباس؟*\n\n"
+            "1️⃣ رد على أي رسالة في الجروب\n"
+            "2️⃣ اكتب `اقتبس`\n\n"
+            "🎨 *ألوان متاحة:*\n"
+            "`اقتبس احمر` • `اقتبس ازرق` • `اقتبس اخضر`\n"
+            "`اقتبس وردي` • `اقتبس بنفسجي` • `اقتبس ذهبي`\n"
+            "`اقتبس سماوي` • `اقتبس زهري` • `اقتبس عشوائي`\n\n"
+            "🖼️ `اقتبس صورة` — اقتباس على شكل صورة",
             parse_mode='Markdown')
         return
 
     try:
-        target = message.reply_to_message
-        parts  = message.text.strip().split()
-        # parts[0] = "اقتبس"، parts[1..] = خيارات اختيارية
+        target  = message.reply_to_message
+        parts   = message.text.strip().split()
 
-        color      = "random"
-        extra_flag = ""
+        color      = random.choice(QUOTE_COLORS)
         is_image   = False
         keep_reply = False
 
@@ -408,23 +634,21 @@ def quote_handler(message):
                 color = COLOR_MAP[p]
             elif p in ["صورة", "img", "png"]:
                 is_image = True
-            elif p in ["مع رد", "رد"]:
+            elif p in ["مع", "رد"]:
                 keep_reply = True
             elif p.startswith("#"):
-                color = p  # hex color مباشر
+                color = p
 
-        # بناء الأمر
-        flags = []
+        # بناء أمر QuotLy
+        flags_parts = []
         if is_image:
-            flags.append("i")
+            flags_parts.append("i")
         if keep_reply:
-            flags.append("r")
-        flags_str = " ".join(flags)
-
+            flags_parts.append("r")
+        flags_str = " ".join(flags_parts)
         q_cmd = f"/q {color} {flags_str}".strip()
 
-        # تعليق فكاهي أولاً
-        comment = random.choice(QUOTE_COMMENTS)
+        # تعليق فكاهي
         sender_name = target.from_user.first_name or "حد"
         funny_intro = random.choice([
             f"😂 {sender_name} قال إيه؟! لازم يتحفظ ده!",
@@ -433,18 +657,18 @@ def quote_handler(message):
             f"🔥 {sender_name} جاب كلام تاريخي 😂",
             f"💀 {sender_name} قالها وراح 😂",
             f"⚡ فلاش نيوز من {sender_name}! 😂",
-            comment,
+            random.choice(QUOTE_COMMENTS),
         ])
 
-        # ابعت التعليق الفكاهي
+        # ① ابعت التعليق الفكاهي ردًا على رسالة "اقتبس"
         bot.reply_to(message, funny_intro)
         time.sleep(0.5)
 
-        # ابعت أمر QuotLy على الرسالة الأصلية
+        # ② ابعت أمر /q ردًا على الرسالة الأصلية المستهدفة ✅ التصحيح هنا
         bot.send_message(
             message.chat.id,
             q_cmd,
-            reply_to_message_id=target.message_id
+            reply_to_message_id=target.message_id   # ← الرسالة المردود عليها مش رسالة البوت
         )
 
     except Exception as e:
@@ -458,14 +682,20 @@ def reply_main(message):
     if not message.text:
         return
 
+    # تعلم من الرسالة دايمًا
+    learn_from_message(message)
+
+    # ريأكت إيموجي (محاولة صامتة)
+    try_react(message)
+
     text = message.text.lower().strip()
     name = message.from_user.first_name or ""
 
     # 1. الضحك
-    if any(x in text for x in ["ههه", "هههه", "wkwk", "lol", "😂", "😹"]):
-        # أحياناً يضحك + يقتبس الرسالة (20% احتمال)
+    if any(x in text for x in ["ههه", "هههه", "wkwk", "lol", "😂", "😹", "🤣", "خخخ", "خخ"]):
         bot.reply_to(message, random.choice(LAUGH_RESPONSES))
-        if random.random() < 0.20 and message.text:
+        # 20% يقتبس الرسالة
+        if random.random() < 0.20:
             time.sleep(0.8)
             color = random.choice(QUOTE_COLORS)
             bot.send_message(
@@ -475,19 +705,27 @@ def reply_main(message):
             )
         return
 
-    # 2. تحية بالاسم
-    if any(g in text for g in ["يا بوت", "بوت", "هاي", "هلو", "أهلا", "أهلو", "سلام عليكم"]):
+    # 2. تحية
+    if any(g in text for g in ["يا بوت", "بوت", "هاي", "هلو", "أهلا", "أهلو", "سلام عليكم", "هلا", "يسلمو"]):
         bot.reply_to(message, f"أهلاً يا {name}! {random.choice(GREET_EXTRAS)} ⚡")
         return
 
-    # 3. البحث في القاموس
+    # 3. سؤال عن البوت — بدون ذكر "AKRO" و لا "مش عارف"
+    if any(x in text for x in ["مين إنت", "مين انت", "بتعمل إيه", "تعمل ايه", "انت مين", "إنت مين", "ايه وظيفتك"]):
+        bot.reply_to(message,
+            f"أنا البوت الذكي AKRO v3 ⚡\n"
+            f"بتعلم من كلامكم، بحفظ معلومات، وبهزر معاكم 😄\n"
+            f"اكتب /help تعرف الأوامر 🤖")
+        return
+
+    # 4. البحث في القاموس
     for key, value in responses.items():
         if key.lower() in text:
             bot.reply_to(message, value)
             return
 
-    # 4. شتيمة / إزعاج — يرد ويقتبس كمان 😂
-    if any(b in text for b in ["احا", "عيل", "غبي", "بوت وسخ", "مش بيشتغل", "خربان"]):
+    # 5. شتيمة — يرد + يقتبس
+    if any(b in text for b in ["احا", "عيل", "غبي", "بوت وسخ", "مش بيشتغل", "خربان", "بايظ", "زباله"]):
         bot.reply_to(message, random.choice(INSULT_COMEBACKS))
         time.sleep(0.5)
         bot.send_message(
@@ -497,21 +735,20 @@ def reply_main(message):
         )
         return
 
-    # 5. سؤال عن البوت
-    if any(x in text for x in ["مين إنت", "مين انت", "بتعمل إيه", "تعمل ايه"]):
-        bot.reply_to(message,
-            "أنا البوت المدمج AKRO v2 ⚡\n"
-            "بتعلم، بحفظ، وبهزر معاكم 😂\n"
-            "اكتب /help تعرف الأوامر 🤖")
-        return
+    # 6. أحياناً يقلد شخص من المجموعة (5%)
+    if random.random() < 0.05 and learned_styles:
+        rand_uid = random.choice(list(learned_styles.keys()))
+        mimic_msg = mimic_user(rand_uid)
+        if mimic_msg:
+            bot.send_message(message.chat.id, mimic_msg)
+            return
 
-    # 6. نكتة عشوائية (7%) — أحياناً مع اقتباس
-    if random.random() < 0.07:
+    # 7. نكتة عشوائية (6%)
+    if random.random() < 0.06:
         joke = random.choice(RANDOM_JOKES)
         bot.send_message(message.chat.id, joke)
-
-        # 30% من النكات بتيجي مع اقتباس للرسالة اللي أثارت النكتة
-        if random.random() < 0.30:
+        # 25% من النكات مع اقتباس
+        if random.random() < 0.25:
             time.sleep(0.6)
             color = random.choice(QUOTE_COLORS)
             bot.send_message(
@@ -523,7 +760,7 @@ def reply_main(message):
 # ══════════════════════════════════════════
 #  تشغيل
 # ══════════════════════════════════════════
-print("🚀 AKRO BOT v2.0 شغال وجاهز للهزار...")
-print(f"📦 ردود: {len(responses)} | 👥 أشخاص: {len(people_db)}")
+print("🚀 AKRO BOT v3.0 شغال وجاهز للهزار!")
+print(f"📦 ردود: {len(responses)} | 👥 أشخاص: {len(people_db)} | 🧠 متعلم: {len(learned_styles)}")
 
 bot.infinity_polling(timeout=60, long_polling_timeout=60)
