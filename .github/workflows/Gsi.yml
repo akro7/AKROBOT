@@ -21,16 +21,17 @@ jobs:
             lz4 wget tar zip unzip xz-utils \
             android-sdk-libsparse-utils \
             git cmake ninja-build build-essential \
-            pkg-config libssl-dev libbrotli-dev zlib1g-dev
+            pkg-config libssl-dev libbrotli-dev zlib1g-dev \
+            libfmt-dev
 
-          # ✅ تحديد هوية git قبل أي عملية clone أو patch
           git config --global user.email "ci@github-actions.local"
           git config --global user.name "GitHub Actions"
 
           git clone --depth=1 --recurse-submodules \
             https://github.com/nmeum/android-tools android-tools-src
           cd android-tools-src
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DANDROID_TOOLS_USE_BUNDLED_FMT=ON
           ninja -C build
           sudo find build -type f \( \
             -name 'lpmake'   -o \
