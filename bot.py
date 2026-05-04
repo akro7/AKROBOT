@@ -13,7 +13,7 @@ import requests
 # ========================================
 
 TOKEN = os.getenv('BOT_TOKEN') or '7721384317:AAHaTZ-iM3RhBmjBgxdaN84ah3DjKUU_LT0'
-GROK_API_KEY = os.getenv('GROK_API_KEY') or 'xai-ضع_مفتاح_جروك_هنا'
+GROK_API_KEY = os.getenv('GROQ_KEY') or 'xai-ضع_مفتاح_جروك_هنا'
 GROK_MODEL   = os.getenv('GROK_MODEL')   or 'grok-2-latest'
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
