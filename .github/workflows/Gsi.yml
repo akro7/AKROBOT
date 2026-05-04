@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       stock_url:
-        description: 'رابط مباشر لملف الـ Stock ROM (zip) - من Samfw.com أو SamMobile'
+        description: 'رابط مباشر لملف الـ Stock ROM (zip)'
         required: true
-        default: ''
+        default: 'https://s08.ooo/v2/IxJCDiMnLhQSJx8gCTsuODwsIB0jMR4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/DTECBRIsIQQJFxo5Mi8NOQMvIRwzOywgPAAHMx4DBRQhJQIwDzssBC4XMCYuFykDISxBDjIvBwEPO0EbMicsCTwxKTkhJSAJLjsxMRcHLCEeMQc/OCQeOi84BkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwYePDY+HB4nPgIeBDA6HjsjOTIDIR80NhUkISQhEDs7MSQuGykjIy8sOTMWB0ImFghAHiQ0FB4kPDABAxUT'
 
 jobs:
   build:
@@ -51,29 +51,14 @@ jobs:
         run: |
           mkdir -p workdir/output
           cd workdir
-
-          # ✅ التحقق من الرابط أولاً
-          echo "Checking URL..."
-          HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" \
-            --max-time 15 \
-            --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
-            "${{ github.event.inputs.stock_url }}")
-          echo "HTTP Status: $HTTP_CODE"
-
-          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ] && [ "$HTTP_CODE" != "301" ]; then
-            echo "❌ ERROR: URL returned HTTP $HTTP_CODE - الرابط لا يعمل!"
-            echo "يرجى الحصول على رابط تنزيل مباشر من:"
-            echo "  - https://samfw.com"
-            echo "  - https://sammobile.com"
-            exit 1
-          fi
-
-          echo "✅ URL is valid, downloading..."
+          echo "Downloading Stock ROM..."
           wget --progress=dot:giga \
-            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            --timeout=300 \
+            --tries=3 \
+            --waitretry=10 \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36" \
             -O stock_rom.zip \
             "${{ github.event.inputs.stock_url }}"
-
           echo "Download size: $(du -sh stock_rom.zip)"
 
       - name: Extract Super.img
