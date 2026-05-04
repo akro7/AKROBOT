@@ -12,13 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4 # تحديث إلى v4
+        uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y lz4 python3-pip wget tar zip unzip simg2img xz-utils
-          # تحميل أدوات التعامل مع أقسام الأندرويد (lpunpack, lpmake)
+          sudo apt-get install -y lz4 python3-pip wget tar zip unzip xz-utils android-sdk-libsparse-utils
           wget https://github.com/LonelyFool/lptools_static/releases/download/v1.0/lptools_static.zip
           unzip lptools_static.zip
           chmod +x lpunpack lpmake lpadd lpremove lpdump
@@ -29,7 +28,6 @@ jobs:
           mkdir -p workdir/output
           cd workdir
           echo "Downloading Stock ROM..."
-          # استخدام -q لتقليل حجم سجلات الـ Log وتسريع العملية
           wget -q -O stock_rom.zip "https://s08.ooo/v2/IxJCDiMnLiADOzMSIwcpJi8nBjENOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/NAAwGw8bNCQNOy82IzACBjQWISsBFgcBMiwzICEAQj8hNjtAHgcgLTwAMwshNgcdLhszDS8vMzMXLAcjFxFCMC4XOz8zGywaNBsiAAEbLh80NhQvODFBEQEbBkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwY8LwshCi4lQR47O0EcIRdBJR4LLwg8OAIELwMsEBIsMy8jFikWHgAuPTQkB0ImFghAHiQ0FB4kCB0jFjwT"
           
           echo "Downloading GSI Image..."
@@ -40,11 +38,9 @@ jobs:
         run: |
           cd workdir
           unzip stock_rom.zip
-          # فك ملف الـ AP مع تجاهل الأخطاء البسيطة في الصيغة
           tar -xf AP_*.tar.md5 || tar -xf AP_*.tar || true
           lz4 -d super.img.lz4 super.img
           simg2img super.img super_raw.img
-          # مسح الملفات الكبيرة لتوفير مساحة في السيرفر
           rm -rf super.img super.img.lz4 stock_rom.zip AP_*.tar*
 
       - name: Unpack Super and Build GSI
@@ -53,17 +49,14 @@ jobs:
           mkdir unpacked
           lpunpack super_raw.img unpacked/
           
-          # حساب الأحجام تلقائياً
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
           ODM_SIZE=$(stat -c%s "unpacked/odm.img")
           
-          # استبدال النظام
           cp gsi.img unpacked/system.img
           truncate -s $SYSTEM_SIZE unpacked/system.img
           
-          # إعادة البناء
           lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:4294967296 \
             --group main:4294967296 \
@@ -80,7 +73,7 @@ jobs:
           echo "Build Complete!"
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4 # تحديث إلى v4 وهو الأهم
+        uses: actions/upload-artifact@v4
         with:
           name: SM-T509N-GSI-ROM
           path: workdir/output/*.tar
