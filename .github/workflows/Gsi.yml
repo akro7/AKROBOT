@@ -20,28 +20,38 @@ jobs:
           sudo apt-get install -y \
             lz4 wget tar zip unzip xz-utils \
             android-sdk-libsparse-utils \
-            git cmake ninja-build build-essential \
-            pkg-config libssl-dev libbrotli-dev zlib1g-dev \
-            libfmt-dev libusb-1.0-0-dev
+            git python3 python3-pip \
+            build-essential cmake ninja-build \
+            pkg-config libssl-dev
 
           git config --global user.email "ci@github-actions.local"
           git config --global user.name "GitHub Actions"
 
-          git clone --depth=1 --recurse-submodules \
-            https://github.com/nmeum/android-tools android-tools-src
-          cd android-tools-src
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DANDROID_TOOLS_USE_BUNDLED_FMT=ON
-          ninja -C build
-          sudo find build -type f \( \
-            -name 'lpmake'   -o \
-            -name 'lpunpack' -o \
-            -name 'lpadd'    -o \
-            -name 'lpremove' -o \
-            -name 'lpdump'   \
-          \) -exec cp {} /usr/local/bin/ \;
+          # ✅ بناء lpunpack و lpmake من مشروع مخصص وخفيف
+          git clone --depth=1 https://github.com/unix3dgforce/lpunpack.git
+          cd lpunpack
+          python3 setup.py build 2>/dev/null || true
+          sudo cp lpunpack.py /usr/local/bin/lpunpack
+          sudo chmod +x /usr/local/bin/lpunpack
           cd ..
-          which lpunpack && which lpmake
+
+          # ✅ تثبيت lpmake عبر apt مباشرة
+          sudo apt-get install -y android-sdk-build-tools || true
+
+          # ✅ بديل: تنزيل lpmake من release جاهز
+          wget -q https://github.com/sycomix/lptools/releases/download/latest/lpmake \
+            -O /tmp/lpmake 2>/dev/null || \
+          wget -q https://github.com/leegarchat/lpmake-prebuilt/releases/latest/download/lpmake \
+            -O /tmp/lpmake 2>/dev/null || true
+          
+          if [ -f /tmp/lpmake ]; then
+            sudo cp /tmp/lpmake /usr/local/bin/lpmake
+            sudo chmod +x /usr/local/bin/lpmake
+          fi
+
+          echo "Tools check:"
+          which lpunpack || echo "lpunpack not found"
+          which lpmake || echo "lpmake not found"
 
       - name: Download Stock ROM and GSI
         run: |
