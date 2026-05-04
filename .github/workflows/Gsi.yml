@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # تحديث إلى v4
 
       - name: Install Dependencies
         run: |
@@ -28,47 +28,42 @@ jobs:
         run: |
           mkdir -p workdir/output
           cd workdir
-          # تحميل الروم الرسمي من الرابط الذي وفره المستخدم
           echo "Downloading Stock ROM..."
-          wget -O stock_rom.zip "https://s08.ooo/v2/IxJCDiMnLiADOzMSIwcpJi8nBjENOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/NAAwGw8bNCQNOy82IzACBjQWISsBFgcBMiwzICEAQj8hNjtAHgcgLTwAMwshNgcdLhszDS8vMzMXLAcjFxFCMC4XOz8zGywaNBsiAAEbLh80NhQvODFBEQEbBkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwY8LwshCi4lQR47O0EcIRdBJR4LLwg8OAIELwMsEBIsMy8jFikWHgAuPTQkB0ImFghAHiQ0FB4kCB0jFjwT"
+          # استخدام -q لتقليل حجم سجلات الـ Log وتسريع العملية
+          wget -q -O stock_rom.zip "https://s08.ooo/v2/IxJCDiMnLiADOzMSIwcpJi8nBjENOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/NAAwGw8bNCQNOy82IzACBjQWISsBFgcBMiwzICEAQj8hNjtAHgcgLTwAMwshNgcdLhszDS8vMzMXLAcjFxFCMC4XOz8zGywaNBsiAAEbLh80NhQvODFBEQEbBkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwY8LwshCi4lQR47O0EcIRdBJR4LLwg8OAIELwMsEBIsMy8jFikWHgAuPTQkB0ImFghAHiQ0FB4kCB0jFjwT"
           
-          # تحميل الـ GSI المختار
           echo "Downloading GSI Image..."
-          wget -O gsi.img.xz "${{ github.event.inputs.gsi_url }}"
-          xz -d gsi.img.xz || true # فك ضغط إذا كان xz
+          wget -q -O gsi.img.xz "${{ github.event.inputs.gsi_url }}"
+          xz -d gsi.img.xz || true
 
       - name: Extract Super.img
         run: |
           cd workdir
-          # 1. فك ضغط الـ Zip الأساسي
           unzip stock_rom.zip
-          # 2. فك ضغط ملف الـ AP (سيبحث عن الملف الذي ينتهي بـ .tar.md5)
-          tar -xf AP_*.tar.md5 || tar -xf AP_*.tar
-          # 3. فك ضغط super.img.lz4
+          # فك ملف الـ AP مع تجاهل الأخطاء البسيطة في الصيغة
+          tar -xf AP_*.tar.md5 || tar -xf AP_*.tar || true
           lz4 -d super.img.lz4 super.img
-          # تحويله من Sparse إلى Raw لتتمكن الأداة من قراءته
           simg2img super.img super_raw.img
+          # مسح الملفات الكبيرة لتوفير مساحة في السيرفر
+          rm -rf super.img super.img.lz4 stock_rom.zip AP_*.tar*
 
       - name: Unpack Super and Build GSI
         run: |
           cd workdir
           mkdir unpacked
-          # تفكيك ملف السوبر الأصلي
           lpunpack super_raw.img unpacked/
           
-          # الحصول على حجم الأقسام الأصلية
+          # حساب الأحجام تلقائياً
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
           ODM_SIZE=$(stat -c%s "unpacked/odm.img")
           
-          # استبدال الـ System الأصلي بالـ GSI
-          # نقوم بتكبير حجم ملف الـ GSI ليتناسب مع القسم إذا لزم الأمر
+          # استبدال النظام
           cp gsi.img unpacked/system.img
           truncate -s $SYSTEM_SIZE unpacked/system.img
           
-          # إعادة بناء ملف السوبر (الأرقام هنا تعتمد على تحليل lpdump التلقائي)
-          # سنستخدم إعدادات افتراضية تناسب A7 Lite، ويفضل تعديل الأرقام بناءً على lpdump
+          # إعادة البناء
           lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:4294967296 \
             --group main:4294967296 \
@@ -85,7 +80,7 @@ jobs:
           echo "Build Complete!"
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # تحديث إلى v4 وهو الأهم
         with:
           name: SM-T509N-GSI-ROM
           path: workdir/output/*.tar
