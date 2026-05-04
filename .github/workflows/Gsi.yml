@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       stock_url:
-        description: 'رابط مباشر لملف الـ Stock ROM (zip)'
+        description: 'رابط مباشر لملف الـ Stock ROM (zip) - من Samfw.com أو SamMobile'
         required: true
-        default: 'https://s08.ooo/v2/IxJCDiMnLiADOzMSIwcpJi8nBjENOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/NAAwGw8bNCQNOy82IzACBjQWISsBFgcBMiwzICEAQj8hNjtAHgcgLTwAMwshNgcdLhszDS8vMzMXLAcjFxFCMC4XOz8zGywaNBsiAAEbLh80NhQvODFBEQEbBkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwY8LwshCi4lQR47O0EcIRdBJR4LLwg8OAIELwMsEBIsMy8jFikWHgAuPTQkB0ImFghAHiQ0FB4kCB0jFjwT'
+        default: ''
 
 jobs:
   build:
@@ -51,8 +51,30 @@ jobs:
         run: |
           mkdir -p workdir/output
           cd workdir
-          echo "Downloading Stock ROM..."
-          wget --progress=dot:giga -O stock_rom.zip "${{ github.event.inputs.stock_url }}"
+
+          # ✅ التحقق من الرابط أولاً
+          echo "Checking URL..."
+          HTTP_CODE=$(curl -o /dev/null -s -w "%{http_code}" \
+            --max-time 15 \
+            --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            "${{ github.event.inputs.stock_url }}")
+          echo "HTTP Status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ] && [ "$HTTP_CODE" != "301" ]; then
+            echo "❌ ERROR: URL returned HTTP $HTTP_CODE - الرابط لا يعمل!"
+            echo "يرجى الحصول على رابط تنزيل مباشر من:"
+            echo "  - https://samfw.com"
+            echo "  - https://sammobile.com"
+            exit 1
+          fi
+
+          echo "✅ URL is valid, downloading..."
+          wget --progress=dot:giga \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            -O stock_rom.zip \
+            "${{ github.event.inputs.stock_url }}"
+
+          echo "Download size: $(du -sh stock_rom.zip)"
 
       - name: Extract Super.img
         run: |
@@ -75,7 +97,6 @@ jobs:
         run: |
           cd workdir
 
-          # ✅ الـ partitions الأساسية فقط (بدون odm)
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
@@ -84,7 +105,6 @@ jobs:
           echo "vendor:  $VENDOR_SIZE"
           echo "product: $PRODUCT_SIZE"
 
-          # بناء أمر lpmake الأساسي
           LPMAKE_CMD="lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:4294967296 \
             --group main:4294967296 \
@@ -92,7 +112,6 @@ jobs:
             --partition vendor:readonly:$VENDOR_SIZE:main --image vendor=unpacked/vendor.img \
             --partition product:readonly:$PRODUCT_SIZE:main --image product=unpacked/product.img"
 
-          # ✅ إضافة system_ext إذا وُجد
           if [ -f "unpacked/system_ext.img" ]; then
             SYSTEM_EXT_SIZE=$(stat -c%s "unpacked/system_ext.img")
             echo "system_ext: $SYSTEM_EXT_SIZE"
@@ -101,7 +120,6 @@ jobs:
               --image system_ext=unpacked/system_ext.img"
           fi
 
-          # ✅ إضافة odm إذا وُجد
           if [ -f "unpacked/odm.img" ]; then
             ODM_SIZE=$(stat -c%s "unpacked/odm.img")
             echo "odm: $ODM_SIZE"
@@ -111,8 +129,7 @@ jobs:
           fi
 
           LPMAKE_CMD="$LPMAKE_CMD --sparse --output output/super_gsi.img"
-
-          echo "Running: $LPMAKE_CMD"
+          echo "Running lpmake..."
           eval $LPMAKE_CMD
 
       - name: Create Odin Tar
