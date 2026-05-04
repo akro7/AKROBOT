@@ -23,6 +23,9 @@ jobs:
 
       - name: Run Bot
         env:
-          # سحب التوكن من السيكرتس (Secrets)
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: python bot.py
+          # تم ربط المتغير الذي يقرأه الكود (GROK_API_KEY) بالسيكرت اللي سمّيته في جيتهب (GROQ_KEY)
+          GROK_API_KEY: ${{ secrets.GROQ_KEY }}
+        run: |
+          echo "🤖 جاري تشغيل البوت..."
+          python bot.py
