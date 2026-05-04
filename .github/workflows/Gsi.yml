@@ -23,13 +23,15 @@ jobs:
             git cmake ninja-build build-essential \
             pkg-config libssl-dev libbrotli-dev zlib1g-dev
 
-          # بناء lptools من المصدر (android-tools standalone project)
+          # ✅ تحديد هوية git قبل أي عملية clone أو patch
+          git config --global user.email "ci@github-actions.local"
+          git config --global user.name "GitHub Actions"
+
           git clone --depth=1 --recurse-submodules \
             https://github.com/nmeum/android-tools android-tools-src
           cd android-tools-src
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           ninja -C build
-          # نسخ الأدوات المطلوبة
           sudo find build -type f \( \
             -name 'lpmake'   -o \
             -name 'lpunpack' -o \
@@ -38,7 +40,6 @@ jobs:
             -name 'lpdump'   \
           \) -exec cp {} /usr/local/bin/ \;
           cd ..
-          # التحقق من وجود الأدوات
           which lpunpack && which lpmake
 
       - name: Download Stock ROM and GSI
