@@ -3,26 +3,53 @@ name: Egyptian Bot Runner
 on:
   push:
     branches: [ main ]
+  schedule:
+    # تشغيل تلقائي كل 6 ساعات لضمان استمرارية الذاكرة أو إعادة التشغيل
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
-  build:
+  run-akro-bot:
     runs-on: ubuntu-latest
+    # نمنع تشغيل نسختين في نفس الوقت عشان ما يحصلش Conflict في الـ API
+    concurrency:
+      group: bot-running
+      cancel-in-progress: true
+
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip' # تسريع تثبيت المكتبات في المرات الجاية
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements1.txt
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pyTelegramBotAPI requests # التأكد من وجود المكتبات الأساسية
 
-      - name: Run Bot
+      - name: Run AKRO Bot
         env:
-          # سحب التوكن من السيكرتس (Secrets)
+          # تأكد من إضافة هذه السيكرتس في إعدادات المستودع (Settings > Secrets)
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: python bot.py
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+        run: |
+          # تشغيل البوت مع تحديد وقت أقصى (اختياري) أو تشغيله كالمعتاد
+          python bot.py
+        
+      - name: Upload Bot Memory (Backup)
+        if: always() # يرفع الملفات حتى لو البوت وقف بسبب خطأ
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-data-backup
+          path: |
+            memory.json
+            people.json
+            learned.json
+            moods.json
+            chat_history.json
+          retention-days: 5
