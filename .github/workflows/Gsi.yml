@@ -17,11 +17,29 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y lz4 python3-pip wget tar zip unzip xz-utils android-sdk-libsparse-utils
-          wget https://github.com/LonelyFool/lptools_static/releases/download/v1.0/lptools_static.zip
-          unzip lptools_static.zip
-          chmod +x lpunpack lpmake lpadd lpremove lpdump
-          sudo mv lpunpack lpmake lpadd lpremove lpdump /usr/local/bin/
+          sudo apt-get install -y \
+            lz4 wget tar zip unzip xz-utils \
+            android-sdk-libsparse-utils \
+            git cmake ninja-build build-essential \
+            pkg-config libssl-dev libbrotli-dev zlib1g-dev
+
+          # بناء lptools من المصدر (android-tools standalone project)
+          git clone --depth=1 --recurse-submodules \
+            https://github.com/nmeum/android-tools android-tools-src
+          cd android-tools-src
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ninja -C build
+          # نسخ الأدوات المطلوبة
+          sudo find build -type f \( \
+            -name 'lpmake'   -o \
+            -name 'lpunpack' -o \
+            -name 'lpadd'    -o \
+            -name 'lpremove' -o \
+            -name 'lpdump'   \
+          \) -exec cp {} /usr/local/bin/ \;
+          cd ..
+          # التحقق من وجود الأدوات
+          which lpunpack && which lpmake
 
       - name: Download Stock ROM and GSI
         run: |
@@ -29,7 +47,7 @@ jobs:
           cd workdir
           echo "Downloading Stock ROM..."
           wget -q -O stock_rom.zip "https://s08.ooo/v2/IxJCDiMnLiADOzMSIwcpJi8nBjENOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/NAAwGw8bNCQNOy82IzACBjQWISsBFgcBMiwzICEAQj8hNjtAHgcgLTwAMwshNgcdLhszDS8vMzMXLAcjFxFCMC4XOz8zGywaNBsiAAEbLh80NhQvODFBEQEbBkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwY8LwshCi4lQR47O0EcIRdBJR4LLwg8OAIELwMsEBIsMy8jFikWHgAuPTQkB0ImFghAHiQ0FB4kCB0jFjwT"
-          
+
           echo "Downloading GSI Image..."
           wget -q -O gsi.img.xz "${{ github.event.inputs.gsi_url }}"
           xz -d gsi.img.xz || true
@@ -48,15 +66,15 @@ jobs:
           cd workdir
           mkdir unpacked
           lpunpack super_raw.img unpacked/
-          
+
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
           ODM_SIZE=$(stat -c%s "unpacked/odm.img")
-          
+
           cp gsi.img unpacked/system.img
           truncate -s $SYSTEM_SIZE unpacked/system.img
-          
+
           lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:4294967296 \
             --group main:4294967296 \
