@@ -2,10 +2,10 @@ name: GSI Super Builder SM-T509N
 on:
   workflow_dispatch:
     inputs:
-      gsi_url:
-        description: 'رابط مباشر لملف الـ GSI (system.img)'
+      stock_url:
+        description: 'رابط مباشر لملف الـ Stock ROM (zip)'
         required: true
-        default: 'https://github.com/phhusson/treble_experimentations/releases/download/v2023.11.12/system-squeak-arm64-ab-vanilla.img.xz'
+        default: ''
 
 jobs:
   build:
@@ -27,65 +27,62 @@ jobs:
           git config --global user.email "ci@github-actions.local"
           git config --global user.name "GitHub Actions"
 
-          # ✅ بناء lpunpack و lpmake من مشروع مخصص وخفيف
           git clone --depth=1 https://github.com/unix3dgforce/lpunpack.git
           cd lpunpack
-          python3 setup.py build 2>/dev/null || true
           sudo cp lpunpack.py /usr/local/bin/lpunpack
           sudo chmod +x /usr/local/bin/lpunpack
           cd ..
 
-          # ✅ تثبيت lpmake عبر apt مباشرة
-          sudo apt-get install -y android-sdk-build-tools || true
-
-          # ✅ بديل: تنزيل lpmake من release جاهز
           wget -q https://github.com/sycomix/lptools/releases/download/latest/lpmake \
             -O /tmp/lpmake 2>/dev/null || \
           wget -q https://github.com/leegarchat/lpmake-prebuilt/releases/latest/download/lpmake \
             -O /tmp/lpmake 2>/dev/null || true
-          
+
           if [ -f /tmp/lpmake ]; then
             sudo cp /tmp/lpmake /usr/local/bin/lpmake
             sudo chmod +x /usr/local/bin/lpmake
           fi
 
           echo "Tools check:"
-          which lpunpack || echo "lpunpack not found"
-          which lpmake || echo "lpmake not found"
+          which lpunpack && which lpmake
 
-      - name: Download Stock ROM and GSI
+      - name: Download Stock ROM
         run: |
           mkdir -p workdir/output
           cd workdir
           echo "Downloading Stock ROM..."
-          wget -q -O stock_rom.zip "https://s08.ooo/v2/IxJCDiMnLiADOzMSIwcpJi8nBjENOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/NAAwGw8bNCQNOy82IzACBjQWISsBFgcBMiwzICEAQj8hNjtAHgcgLTwAMwshNgcdLhszDS8vMzMXLAcjFxFCMC4XOz8zGywaNBsiAAEbLh80NhQvODFBEQEbBkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwY8LwshCi4lQR47O0EcIRdBJR4LLwg8OAIELwMsEBIsMy8jFikWHgAuPTQkB0ImFghAHiQ0FB4kCB0jFjwT"
-
-          echo "Downloading GSI Image..."
-          wget -q -O gsi.img.xz "${{ github.event.inputs.gsi_url }}"
-          xz -d gsi.img.xz || true
+          wget --progress=dot:giga -O stock_rom.zip "${{ github.event.inputs.stock_url }}"
 
       - name: Extract Super.img
         run: |
           cd workdir
           unzip stock_rom.zip
           tar -xf AP_*.tar.md5 || tar -xf AP_*.tar || true
-          lz4 -d super.img.lz4 super.img
+          lz4 -d super.img.lz4 super.img 2>/dev/null || true
           simg2img super.img super_raw.img
-          rm -rf super.img super.img.lz4 stock_rom.zip AP_*.tar*
+          rm -f super.img super.img.lz4 stock_rom.zip AP_*.tar*
 
-      - name: Unpack Super and Build GSI
+      - name: Unpack Super
         run: |
           cd workdir
-          mkdir unpacked
+          mkdir -p unpacked
           lpunpack super_raw.img unpacked/
+          echo "Partitions found:"
+          ls unpacked/
+
+      - name: Rebuild Super as GSI-ready
+        run: |
+          cd workdir
 
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
           ODM_SIZE=$(stat -c%s "unpacked/odm.img")
 
-          cp gsi.img unpacked/system.img
-          truncate -s $SYSTEM_SIZE unpacked/system.img
+          echo "system: $SYSTEM_SIZE"
+          echo "vendor: $VENDOR_SIZE"
+          echo "product: $PRODUCT_SIZE"
+          echo "odm: $ODM_SIZE"
 
           lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:4294967296 \
