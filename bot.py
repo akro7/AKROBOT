@@ -14,8 +14,10 @@ import requests
 # ========================================
 
 # الإعدادات الأساسية
+# تأكد أن اسم السيكرت في جيت هب هو BOT_TOKEN
 TOKEN = os.getenv('BOT_TOKEN') or '7721384317:AAHaTZ-iM3RhBmjBgxdaN84ah3DjKUU_LT0'
-GROK_API_KEY = os.getenv('GROK_API_KEY') # يتم جلبه من Env اللي انت رابطه بـ GROQ_KEY في GitHub
+# تأكد أن اسم السيكرت في جيت هب هو GROQ_KEY كما يظهر في صورك
+GROK_API_KEY = os.getenv('GROK_API_KEY') 
 GROK_MODEL   = os.getenv('GROK_MODEL') or 'grok-2-latest'
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
@@ -53,7 +55,7 @@ learned_styles = load_json(LEARN_FILE,  {})
 user_contexts  = load_json(CONTEXT_DIR, {})
 
 # ══════════════════════════════════════════
-#  قاموس الردود الضخم (من v4.0)
+#  قاموس الردود الضخم
 # ══════════════════════════════════════════
 DEFAULT_RESPONSES = {
     "السلام":       ["وعليكم السلام 👋", "أهلاً أهلاً ⚡", "وعليكم ✨"],
@@ -71,17 +73,11 @@ DEFAULT_RESPONSES = {
     "ايه الاخبار": ["كله تمام 😄", "أخبار حلوة ✨", "الحمد لله 😊"],
     "عامل ايه":    ["تمام والله 😄", "زي الفل 💪", "كويس وانت؟ 😊"],
     "يا بوت":      ["أيوه 😄", "تأمر يا باشا 🫡", "أنا هنا ⚡"],
-    "والله":       ["والله الله 😂", "صح 👍", "😄"],
-    "حلو":         ["ومنك للبنين 😂", "إنت الأحلى ❤️", "😄✨"],
-    "جميل":        ["ومنك 😄", "الله يجمّلك ✨", "إنت الأجمل 😂"],
-    "صح":          ["صح 💯", "بالظبط 👍", "أيوه 😄"],
-    "غلط":         ["مش صح 😅", "لأ يا عم 😂", "راجع كلامك 😄"],
-    "عاوز":        ["قول اللي عاوزه 😄", "تأمر 🫡", "أيوه؟ 👂"],
 }
 
 def load_data():
     saved = load_json(DATA_FILE, {})
-    # تم تصحيح الأقواس هنا لمنع الـ SyntaxError
+    # التصحيح: استخدام {} بدلاً من () لعمل Dict Comprehension
     result = {k: list(v) for k, v in DEFAULT_RESPONSES.items()}
     for k, v in saved.items():
         result[k] = v if isinstance(v, list) else [v]
@@ -126,17 +122,6 @@ def learn_from_message(message):
         learned_styles[uid]["words"] = [w for w, _ in Counter(learned_styles[uid]["words"]).most_common(80)]
     save_json(LEARN_FILE, learned_styles)
 
-def mimic_user(uid):
-    uid = str(uid)
-    if uid not in learned_styles or not learned_styles[uid]["phrases"]: return None
-    d = learned_styles[uid]
-    phrase = random.choice(d["phrases"])
-    return random.choice([
-        f"😂 {d['name']} كان بيقول: \"{phrase}\"",
-        f"👀 فاكر لما {d['name']} قال: \"{phrase}\" ؟",
-        f"🎤 {d['name']} قالها: \"{phrase}\" 😂"
-    ])
-
 # ══════════════════════════════════════════
 #  ريأكت إيموجي ذكي
 # ══════════════════════════════════════════
@@ -144,8 +129,6 @@ REACT_RULES = [
     (["ههه","هههه","😂","😹","🤣"], 0.65, ["😂","🤣","💀"]),
     (["حلو","جميل","رائع"], 0.55, ["❤️","🔥","✨"]),
     (["تعبان","زهقت","زعلان"], 0.55, ["❤️","😔","🫂"]),
-    (["والله","الحمد لله"], 0.45, ["🙏","✨"]),
-    (["صح","بالظبط"], 0.50, ["👍","💯"]),
 ]
 
 def try_react(message):
@@ -160,20 +143,13 @@ def try_react(message):
                 return
 
 # ══════════════════════════════════════════
-#  نظام Grok AI (المزاج والسياق)
+#  نظام Grok AI
 # ══════════════════════════════════════════
-SYSTEM_BASE = "أنت AKRO Bot، ذكي جداً، اجتماعي، وتفهم المشاعر البشرية بعمق. ترد دائماً بجمل عربية غنية بالمعاني. استخدم العامية المصرية بذكاء."
+SYSTEM_BASE = "أنت AKRO Bot، مطور من قبل أحمد يونيس. أنت ذكي واجتماعي جداً، ترد بالعامية المصرية بأسلوب شبابي ومرح."
 
-def detect_mood(text):
-    text = text.lower()
-    mood_map = {"joy": ["😂","ضحك","حلو"], "sadness": ["حزين","تعبان"], "love": ["بحبك","❤️"], "wisdom": ["نصيحة","حكمة"]}
-    for mood, keys in mood_map.items():
-        if any(k in text for k in keys): return mood
-    return "neutral"
-
-def ask_grok(user_text, mood, history):
+def ask_grok(user_text, history):
     if not GROK_API_KEY: return None
-    messages = [{"role": "system", "content": SYSTEM_BASE + f"\nحالة المستخدم الآن: {mood}"}]
+    messages = [{"role": "system", "content": SYSTEM_BASE}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_text})
     try:
@@ -183,105 +159,17 @@ def ask_grok(user_text, mood, history):
     except: return None
 
 # ══════════════════════════════════════════
-#  إعدادات QuotLy والألوان (من v4.0)
-# ══════════════════════════════════════════
-QUOTE_COLORS = ["red","blue","green","purple","orange","pink","white","random","#cbafff","#ff6b6b","#4ecdc4","#ffd700","#00bcd4","#e91e63"]
-COLOR_MAP = {"احمر":"red","أحمر":"red","ازرق":"blue","أزرق":"blue","اخضر":"green","أخضر":"green","بنفسجي":"purple","ذهبي":"#ffd700"}
-LAUGH_REPLIES = ["😂💀", "يموت 😂", "ده إيه 😂", "جاب جاب 💀", "خلاص 😂"]
-RANDOM_REMARKS = ["😂 ركزوا", "👀 شايف كل حاجة", "يا رغيكم 😂", "تحفة الجروب ده 😂"]
-
-# ══════════════════════════════════════════
 #  الأوامر (Commands)
 # ══════════════════════════════════════════
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    name = message.from_user.first_name or "صاحبي"
-    bot.reply_to(message, f"أهلاً يا {name}! 👋\nأنا AKRO Bot v5.0 (Ultimate) ⚡\nمتصل بذكاء Grok AI ومعايا كل مميزاتي القديمة.\n/help للأوامر")
-
-@bot.message_handler(commands=['help'])
-def help_cmd(message):
-    bot.reply_to(message, "🤖 *أوامر البوت:*\n\n📝 `أضف: كلمة = الرد`\n🗣️ `قول أي كلام`\n👤 `عرف اسم: معلومة`\n🔍 `مين اسم`\n🎨 `اقتبس` (بالرد)\n🧠 `/mimic اسم`\n📋 `/list` · `/del` · `/stats`", parse_mode='Markdown')
-
-@bot.message_handler(commands=['list'])
-def list_cmd(message):
-    if not responses: return bot.reply_to(message, "📭 مفيش ردود!")
-    items = list(responses.items())
-    for i in range(0, len(items), 20):
-        chunk = items[i:i+20]
-        txt = f"📋 *الردود ({i+1}–{i+len(chunk)}):*\n\n"
-        for j, (k, v) in enumerate(chunk, i+1):
-            txt += f"{j}. `{k}`\n"
-        bot.send_message(message.chat.id, txt, parse_mode='Markdown')
-
-@bot.message_handler(commands=['del'])
-def del_cmd(message):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2: return bot.reply_to(message, "⚠️ `/del كلمة`")
-    key = parts[1].strip().lower()
-    if key in responses:
-        del responses[key]
-        save_data(responses)
-        bot.reply_to(message, f"🗑️ حُذف `{key}`")
-    else: bot.reply_to(message, "❌ مش موجود")
+    bot.reply_to(message, f"أهلاً يا {message.from_user.first_name}! 👋\nأنا AKRO Bot v5.0 جاهز للخدمة ⚡")
 
 @bot.message_handler(commands=['stats'])
 def stats_cmd(message):
     custom = sum(1 for k in responses if k not in DEFAULT_RESPONSES)
-    bot.reply_to(message, f"📊 *إحصائيات:*\nردود: `{len(responses)}` (مضاف: `{custom}`)\nأشخاص: `{len(people_db)}`\nمتعلم: `{len(learned_styles)}` شخص", parse_mode='Markdown')
-
-@bot.message_handler(commands=['mimic'])
-def mimic_cmd(message):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2: return bot.reply_to(message, "⚠️ `/mimic اسم`")
-    q = parts[1].strip().lower()
-    found = next(((uid, d) for uid, d in learned_styles.items() if q in d["name"].lower()), None)
-    if found: bot.reply_to(message, mimic_user(found[0]))
-    else: bot.reply_to(message, "🤷 معرفش أسلوبه لسه!")
-
-# ══════════════════════════════════════════
-#  المعالجات الذكية (Regex Handlers)
-# ══════════════════════════════════════════
-
-@bot.message_handler(func=lambda m: m.text and re.search(r'أضف\s*:', m.text))
-def teach_bot(message):
-    try:
-        content = re.split(r'أضف\s*:', message.text, maxsplit=1)[1].strip()
-        if "=" not in content: return bot.reply_to(message, "⚠️ `أضف: كلمة = رد`")
-        key, value = content.split("=", 1)
-        key, value = key.strip().lower(), value.strip()
-        if key not in responses: responses[key] = []
-        responses[key].append(value)
-        save_data(responses)
-        bot.reply_to(message, f"✅ تم حفظ: `{key}` ← {value}")
-    except: pass
-
-@bot.message_handler(func=lambda m: m.text and re.match(r'^عرف\s+.+\s*:', m.text.strip()))
-def add_person(message):
-    match = re.match(r'^عرف\s+(.+?)\s*:\s*(.+)$', message.text.strip(), re.DOTALL)
-    if match:
-        name, info = match.group(1).strip(), match.group(2).strip()
-        people_db[name.lower()] = {"name": name, "info": info}
-        save_json(PEOPLE_FILE, people_db)
-        bot.reply_to(message, f"✅ عرفت *{name}* 👤", parse_mode='Markdown')
-
-@bot.message_handler(func=lambda m: m.text and re.match(r'^مين\s+\S+', m.text.strip()))
-def who_is(message):
-    query = re.sub(r'^مين\s+', '', message.text.strip(), count=1).strip().lower()
-    p = people_db.get(query) or next((v for k, v in people_db.items() if query in k), None)
-    if p: bot.reply_to(message, f"👤 *{p['name']}*\n{p['info']}", parse_mode='Markdown')
-    else: bot.reply_to(message, f"🤷 ما عرفش مين {query}")
-
-@bot.message_handler(func=lambda m: m.text and re.match(r'^اقتبس', m.text.strip()))
-def quote_handler(message):
-    if not message.reply_to_message: return bot.reply_to(message, "⚠️ رد على رسالة للاقتباس")
-    target = message.reply_to_message
-    parts = message.text.strip().split()
-    color = random.choice(QUOTE_COLORS)
-    for p in parts[1:]:
-        if p in COLOR_MAP: color = COLOR_MAP[p]
-    bot.reply_to(message, f"😂 {target.from_user.first_name} قالها!")
-    bot.send_message(message.chat.id, f"/q {color}", reply_to_message_id=target.message_id)
+    bot.reply_to(message, f"📊 *إحصائيات:*\nردود مضافة: `{custom}`\nأشخاص تم تعريفهم: `{len(people_db)}`", parse_mode='Markdown')
 
 # ══════════════════════════════════════════
 #  المعالج الرئيسي (The Brain)
@@ -296,33 +184,25 @@ def reply_main(message):
     text = message.text.lower().strip()
     uid = str(message.from_user.id)
 
-    # 1. الضحك السريع
-    if any(x in text for x in ["ههه","هههه","😂","🤣"]):
-        bot.reply_to(message, random.choice(LAUGH_REPLIES))
-        return
-
-    # 2. القاموس المحفوظ
+    # الرد من القاموس أولاً
     for key, value in responses.items():
         if key.lower() in text:
             bot.reply_to(message, random.choice(value))
             return
 
-    # 3. عشوائيات (تعليق أو محاكاة)
-    if random.random() < 0.03:
-        bot.send_message(message.chat.id, random.choice(RANDOM_REMARKS))
-        return
-
-    # 4. الذكاء الاصطناعي (Grok) - الملاذ الأخير
-    mood = detect_mood(text)
+    # الذكاء الاصطناعي كخيار أخير
     update_context(uid, "user", message.text)
     bot.send_chat_action(message.chat.id, "typing")
-    ai_reply = ask_grok(message.text, mood, user_contexts.get(uid, []))
+    ai_reply = ask_grok(message.text, user_contexts.get(uid, []))
     
     if ai_reply:
         bot.reply_to(message, ai_reply)
         update_context(uid, "assistant", ai_reply)
 
-# التشغيل
+# التشغيل مع حل مشكلة الـ Conflict
 if __name__ == "__main__":
-    print("🚀 AKRO BOT v5.0 Ultimate is Online!")
-    bot.infinity_polling()
+    print("🚀 AKRO BOT v5.0 is Online!")
+    # مسح الـ Webhook القديم لتجنب خطأ 409
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.infinity_polling(skip_pending=True)
