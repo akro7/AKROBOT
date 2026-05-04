@@ -15,7 +15,7 @@ import requests
 
 # الإعدادات الأساسية
 TOKEN = os.getenv('BOT_TOKEN') or '7721384317:AAHaTZ-iM3RhBmjBgxdaN84ah3DjKUU_LT0'
-GROK_API_KEY = os.getenv('GROQ_KEY') # جلب المفتاح من السيكرتس
+GROK_API_KEY = os.getenv('GROK_API_KEY') # يتم جلبه من Env اللي انت رابطه بـ GROQ_KEY في GitHub
 GROK_MODEL   = os.getenv('GROK_MODEL') or 'grok-2-latest'
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
@@ -81,6 +81,7 @@ DEFAULT_RESPONSES = {
 
 def load_data():
     saved = load_json(DATA_FILE, {})
+    # تم تصحيح الأقواس هنا لمنع الـ SyntaxError
     result = {k: list(v) for k, v in DEFAULT_RESPONSES.items()}
     for k, v in saved.items():
         result[k] = v if isinstance(v, list) else [v]
