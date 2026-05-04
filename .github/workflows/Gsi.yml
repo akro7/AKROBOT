@@ -22,7 +22,7 @@ jobs:
             android-sdk-libsparse-utils \
             git cmake ninja-build build-essential \
             pkg-config libssl-dev libbrotli-dev zlib1g-dev \
-            libfmt-dev
+            libfmt-dev libusb-1.0-0-dev
 
           git config --global user.email "ci@github-actions.local"
           git config --global user.name "GitHub Actions"
