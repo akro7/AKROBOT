@@ -42,7 +42,7 @@ def gh_headers(token):
 def trigger_workflow(token, repo, workflow_file, inputs: dict):
     url = f"{GH_API}/repos/{repo}/actions/workflows/{workflow_file}/dispatches"
     r = requests.post(url, headers=gh_headers(token),
-                      json={"ref": "main", "inputs": inputs}, timeout=15)
+                      json={"ref": "android-12.1", "inputs": inputs}, timeout=15)
     return r.status_code in (204, 201, 200)
 
 def get_latest_run(token, repo, workflow_file):
@@ -150,8 +150,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         f"```\n"
         f"╔═══════════════════════════════╗\n"
-        f"║   🖤 PBRP Builder Bot - AKRO  ║\n"
-        f"║   PitchBlack Recovery Project  ║\n"
+        f"║   🖤 A34 🏂 Builder Bot - AKRO  ║\n"
+        f"║   ALL Recovery Project  ║\n"
         f"╚═══════════════════════════════╝\n"
         f"```\n"
         f"👋 مرحباً *{name}*!\n\n"
