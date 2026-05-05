@@ -5,7 +5,7 @@ on:
       stock_url:
         description: 'رابط مباشر لملف الـ Stock ROM (zip)'
         required: true
-        default: 'https://s02.ooo/v2/IxJCDiMnLhsDFw1ALywCMy4IMC0DOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/DxtBBi8AKQM7QDMULjYVMDUWKQ4BLy4mIwQwJjIsPisDJx4JLjghCAMwIAMNNi4JMhcvCBc4IDAPGyABMyQuAzsILBYPOz4GMkApAANAIRwSMB4rEhEzAxc4BkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwYBDTgeLzIXFCUyMQIzDTgNPzI2HwMPCAoUEicUPS87AhwuNgYSEhEGJxILB0ImFghAHiQVOSMDBTkBFjsT'
+        default: 'https://s02.ooo/v2/IxJCDiMnLhsDFw1ALywCMy4IMC0DOx4lFzssIDs2ByAzMUEgOzEUQDMQMCMBOyw/DxtBBi8AKQM7QDMULjYVMDUWKQ4BLy4mIwQwJjIsPisDJx4JLjghCAMwIAMNNi4JMhcvCBc4IDAPGyABMyQuAzsILBYPOz4GMkApAANAIRwSMB4rEhEzAxc4BkIeCzwGHgM8FCMkNDEjCxVACTghHzInDQYuFx8rIwAvJCFAMxE8EQY5NRshDjURPho0ES8kNRYhOR44LwsJEQc5NBsjKyEAPg4hAAYsLjgeLDQRHg4yJTMsMiUNKzwAPh8mGzk5FyUzDTUHQQEuByADISxBIwMnOUANQAokMzYCICMXPjkDFzA1CS8pDTsxHhwzQAZCOzEHHjMsNCsNMT4eODAeHgkvDTAjFiwmMzsuITgwDTAjFiw8FwcjJA0vKTojLD4RPBcjKw8RLDkmGwZBDTgeLzIXFCUyMQIzDTgNPzI2HwMPCAoUEicUPS87AhwuNgYSEhEGJxILB0ImFghAHiQVOSMDBTkBFjsT'
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Dependencies & Build Tools
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -27,67 +27,122 @@ jobs:
             libfmt-dev libusb-1.0-0-dev \
             libprotobuf-dev protobuf-compiler bc
 
-          # ✅ ضبط الهوية لتجنب خطأ Git patch
-          git config --global user.email "ci@akro.dev"
-          git config --global user.name "AKRO-CI"
+          # ✅ ضروري قبل cmake لتجنب خطأ git patch
+          git config --global user.email "ci@github-actions.local"
+          git config --global user.name "GitHub Actions"
 
-          # ✅ تجهيز lpunpack
+          # ✅ lpunpack
           git clone --depth=1 https://github.com/unix3dgforce/lpunpack.git /opt/lpunpack
           pip3 install --break-system-packages protobuf 2>/dev/null || true
 
-          # ✅ بناء lpmake من المصدر لضمان أعلى توافق
-          git clone --depth=1 --recurse-submodules https://github.com/nmeum/android-tools /opt/android-tools
+          sudo tee /usr/local/bin/lpunpack > /dev/null << 'EOF'
+          #!/bin/bash
+          exec python3 /opt/lpunpack/lpunpack.py "$@"
+          EOF
+          sudo chmod +x /usr/local/bin/lpunpack
+
+          # ✅ بناء lpmake مع البحث الذكي عن الملف
+          git clone --depth=1 --recurse-submodules \
+            https://github.com/nmeum/android-tools /opt/android-tools
           cd /opt/android-tools
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
             -DANDROID_TOOLS_USE_BUNDLED_FMT=ON \
             -DANDROID_TOOLS_USE_BUNDLED_LIBUSB=ON \
             -DANDROID_TOOLS_USE_BUNDLED_PROTOBUF=ON
           ninja -C build lpmake
-          sudo cp build/lpmake /usr/local/bin/
+
+          # ✅ البحث في كل المجلدات الفرعية (يحل خطأ cp: cannot stat)
+          LPMAKE_BIN=$(find /opt/android-tools/build -name "lpmake" -type f | head -1)
+          echo "Found lpmake at: $LPMAKE_BIN"
+          sudo cp "$LPMAKE_BIN" /usr/local/bin/lpmake
           sudo chmod +x /usr/local/bin/lpmake
 
-      - name: Download and Prepare Stock
+          echo "=== Tools check ==="
+          python3 /opt/lpunpack/lpunpack.py --help 2>&1 | head -2 || echo "lpunpack ok"
+          lpmake --version 2>&1 || echo "lpmake ready"
+
+      - name: Download Stock ROM
         run: |
           mkdir -p workdir/output
           cd workdir
-          echo "Downloading ROM..."
-          wget -q --show-progress -O stock_rom.zip "${{ github.event.inputs.stock_url }}"
-          
-          echo "Extracting partitions..."
+          echo "Downloading Stock ROM..."
+          wget --progress=dot:giga \
+            --timeout=300 \
+            --tries=3 \
+            --waitretry=10 \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36" \
+            -O stock_rom.zip \
+            "${{ github.event.inputs.stock_url }}"
+          echo "Download size: $(du -sh stock_rom.zip)"
+
+      - name: Extract Super.img
+        run: |
+          cd workdir
           unzip stock_rom.zip
           tar -xf AP_*.tar.md5 || tar -xf AP_*.tar || true
           lz4 -d super.img.lz4 super.img 2>/dev/null || true
-          
-          # تحويل السوبر لـ Raw وأخذ الحجم الحقيقي بدقة للموديل T509N
           simg2img super.img super_raw.img
-          echo "ORIGINAL_SUPER_SIZE=$(stat -c%s super_raw.img)" >> $GITHUB_ENV
-          rm -f super.img super.img.lz4 AP_*.tar* stock_rom.zip
+          rm -f super.img super.img.lz4 stock_rom.zip AP_*.tar*
 
-      - name: Unpack and Fix Sparse Images
+      - name: Unpack Super
         run: |
           cd workdir
           mkdir -p unpacked
           python3 /opt/lpunpack/lpunpack.py super_raw.img unpacked/
-          
-          # ✅ الكود الحاسم: تحويل كل الأقسام لـ Raw قبل الدمج
-          echo "Checking for Sparse headers and fixing them..."
+          echo "Partitions found:"
+          ls unpacked/
+
+      - name: Fix Sparse Partitions
+        run: |
+          cd workdir
+          echo "Converting any sparse images to raw..."
           for img in unpacked/*.img; do
             if [ -f "$img" ]; then
-              simg2img "$img" "${img}.raw" 2>/dev/null && mv "${img}.raw" "$img" || echo "$img is already raw"
+              # فحص إذا كان sparse بفحص الـ magic header
+              MAGIC=$(xxd -l 4 "$img" | awk '{print $2$3}' | head -1)
+              if [ "$MAGIC" = "ed26ff3a" ]; then
+                echo "Converting sparse: $img"
+                simg2img "$img" "${img}.raw"
+                mv "${img}.raw" "$img"
+              else
+                echo "Already raw: $img"
+              fi
             fi
           done
 
-      - name: Rebuild Super Image
+      - name: Rebuild Super as GSI-ready
         run: |
           cd workdir
-          
-          # قراءة الأحجام الحقيقية للأقسام
+
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
-          SUPER_SIZE=${{ env.ORIGINAL_SUPER_SIZE }}
-          
-          echo "Building with Super Size: $SUPER_SIZE"
+
+          TOTAL=$((SYSTEM_SIZE + VENDOR_SIZE + PRODUCT_SIZE))
+
+          echo "system:  $SYSTEM_SIZE"
+          echo "vendor:  $VENDOR_SIZE"
+          echo "product: $PRODUCT_SIZE"
+
+          if [ -f "unpacked/system_ext.img" ]; then
+            SYSTEM_EXT_SIZE=$(stat -c%s "unpacked/system_ext.img")
+            echo "system_ext: $SYSTEM_EXT_SIZE"
+            TOTAL=$((TOTAL + SYSTEM_EXT_SIZE))
+          fi
+
+          if [ -f "unpacked/odm.img" ]; then
+            ODM_SIZE=$(stat -c%s "unpacked/odm.img")
+            echo "odm: $ODM_SIZE"
+            TOTAL=$((TOTAL + ODM_SIZE))
+          fi
+
+          # إضافة 5% هامش + تقريب لأقرب مضاعف لـ 4096
+          SUPER_SIZE=$(echo "$TOTAL * 105 / 100" | bc)
+          SUPER_SIZE=$(( (SUPER_SIZE + 4095) / 4096 * 4096 ))
+
+          echo "Total partitions size: $TOTAL"
+          echo "Super size (with margin): $SUPER_SIZE"
 
           LPMAKE_CMD="lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:${SUPER_SIZE} \
@@ -96,22 +151,30 @@ jobs:
             --partition vendor:readonly:$VENDOR_SIZE:main --image vendor=unpacked/vendor.img \
             --partition product:readonly:$PRODUCT_SIZE:main --image product=unpacked/product.img"
 
-          # إضافة الأقسام الإضافية ديناميكياً
-          [ -f "unpacked/system_ext.img" ] && LPMAKE_CMD="$LPMAKE_CMD --partition system_ext:readonly=$(stat -c%s unpacked/system_ext.img):main --image system_ext=unpacked/system_ext.img"
-          [ -f "unpacked/odm.img" ] && LPMAKE_CMD="$LPMAKE_CMD --partition odm:readonly=$(stat -c%s unpacked/odm.img):main --image odm=unpacked/odm.img"
+          if [ -f "unpacked/system_ext.img" ]; then
+            LPMAKE_CMD="$LPMAKE_CMD \
+              --partition system_ext:readonly:$SYSTEM_EXT_SIZE:main \
+              --image system_ext=unpacked/system_ext.img"
+          fi
+
+          if [ -f "unpacked/odm.img" ]; then
+            LPMAKE_CMD="$LPMAKE_CMD \
+              --partition odm:readonly:$ODM_SIZE:main \
+              --image odm=unpacked/odm.img"
+          fi
 
           LPMAKE_CMD="$LPMAKE_CMD --sparse --output output/super_gsi.img"
-          
+          echo "Running lpmake..."
           eval $LPMAKE_CMD
 
-      - name: Finalize Odin Package
+      - name: Create Odin Tar
         run: |
           cd workdir/output
           tar -cvf SM-T509N_GSI_Super.tar super_gsi.img
-          echo "Odin flashable TAR created."
+          echo "Build Complete!"
 
-      - name: Upload Build
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SM-T509N-GSI-Super-Final
+          name: SM-T509N-GSI-ROM
           path: workdir/output/*.tar
