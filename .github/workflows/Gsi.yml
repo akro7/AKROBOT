@@ -40,7 +40,7 @@ jobs:
           EOF
           sudo chmod +x /usr/local/bin/lpunpack
 
-          # ✅ بناء lpmake من android-tools مع تخطي كل ما عدا lpmake
+          # ✅ بناء lpmake
           git clone --depth=1 --recurse-submodules \
             https://github.com/nmeum/android-tools /opt/android-tools
           cd /opt/android-tools
@@ -50,12 +50,16 @@ jobs:
             -DANDROID_TOOLS_USE_BUNDLED_LIBUSB=ON \
             -DANDROID_TOOLS_USE_BUNDLED_PROTOBUF=ON
           ninja -C build lpmake
-          sudo cp build/lpmake /usr/local/bin/lpmake
+
+          # ✅ إيجاد lpmake في أي مسار داخل build
+          LPMAKE_BIN=$(find /opt/android-tools/build -name "lpmake" -type f | head -1)
+          echo "Found lpmake at: $LPMAKE_BIN"
+          sudo cp "$LPMAKE_BIN" /usr/local/bin/lpmake
           sudo chmod +x /usr/local/bin/lpmake
 
           echo "=== Tools check ==="
           python3 /opt/lpunpack/lpunpack.py --help 2>&1 | head -2 || echo "lpunpack ok"
-          lpmake --version 2>&1 || echo "lpmake ok"
+          lpmake --version 2>&1 || echo "lpmake ready"
 
       - name: Download Stock ROM
         run: |
