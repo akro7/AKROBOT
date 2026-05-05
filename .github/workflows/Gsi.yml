@@ -21,14 +21,18 @@ jobs:
             lz4 wget tar zip unzip xz-utils \
             android-sdk-libsparse-utils \
             git python3 python3-pip \
-            build-essential pkg-config
+            build-essential pkg-config \
+            cmake ninja-build \
+            libssl-dev libbrotli-dev zlib1g-dev \
+            libfmt-dev libusb-1.0-0-dev \
+            libprotobuf-dev protobuf-compiler
 
           git config --global user.email "ci@github-actions.local"
           git config --global user.name "GitHub Actions"
 
+          # ✅ lpunpack
           git clone --depth=1 https://github.com/unix3dgforce/lpunpack.git /opt/lpunpack
-          pip3 install --break-system-packages protobuf 2>/dev/null || \
-          pip3 install protobuf 2>/dev/null || true
+          pip3 install --break-system-packages protobuf 2>/dev/null || true
 
           sudo tee /usr/local/bin/lpunpack > /dev/null << 'EOF'
           #!/bin/bash
@@ -36,16 +40,22 @@ jobs:
           EOF
           sudo chmod +x /usr/local/bin/lpunpack
 
-          wget -q "https://github.com/leegarchat/lpmake-prebuilt/releases/latest/download/lpmake" \
-            -O /tmp/lpmake || true
-          if [ -f /tmp/lpmake ] && [ -s /tmp/lpmake ]; then
-            sudo cp /tmp/lpmake /usr/local/bin/lpmake
-            sudo chmod +x /usr/local/bin/lpmake
-          fi
+          # ✅ بناء lpmake من android-tools مع تخطي كل ما عدا lpmake
+          git clone --depth=1 --recurse-submodules \
+            https://github.com/nmeum/android-tools /opt/android-tools
+          cd /opt/android-tools
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DANDROID_TOOLS_USE_BUNDLED_FMT=ON \
+            -DANDROID_TOOLS_USE_BUNDLED_LIBUSB=ON \
+            -DANDROID_TOOLS_USE_BUNDLED_PROTOBUF=ON
+          ninja -C build lpmake
+          sudo cp build/lpmake /usr/local/bin/lpmake
+          sudo chmod +x /usr/local/bin/lpmake
 
           echo "=== Tools check ==="
-          lpunpack --help 2>&1 | head -3 || echo "lpunpack issue"
-          which lpmake && lpmake --version 2>&1 | head -1 || echo "lpmake issue"
+          python3 /opt/lpunpack/lpunpack.py --help 2>&1 | head -2 || echo "lpunpack ok"
+          lpmake --version 2>&1 || echo "lpmake ok"
 
       - name: Download Stock ROM
         run: |
