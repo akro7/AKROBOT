@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install Dependencies & Build Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -27,55 +27,68 @@ jobs:
             libfmt-dev libusb-1.0-0-dev \
             libprotobuf-dev protobuf-compiler bc
 
-          # تثبيت lpunpack
+          # ✅ ضبط الهوية لتجنب خطأ Git patch
+          git config --global user.email "ci@akro.dev"
+          git config --global user.name "AKRO-CI"
+
+          # ✅ تجهيز lpunpack
           git clone --depth=1 https://github.com/unix3dgforce/lpunpack.git /opt/lpunpack
-          
-          # بناء lpmake بنسخة مستقرة
+          pip3 install --break-system-packages protobuf 2>/dev/null || true
+
+          # ✅ بناء lpmake من المصدر لضمان أعلى توافق
           git clone --depth=1 --recurse-submodules https://github.com/nmeum/android-tools /opt/android-tools
           cd /opt/android-tools
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANDROID_TOOLS_USE_BUNDLED_FMT=ON
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DANDROID_TOOLS_USE_BUNDLED_FMT=ON \
+            -DANDROID_TOOLS_USE_BUNDLED_LIBUSB=ON \
+            -DANDROID_TOOLS_USE_BUNDLED_PROTOBUF=ON
           ninja -C build lpmake
           sudo cp build/lpmake /usr/local/bin/
+          sudo chmod +x /usr/local/bin/lpmake
 
-      - name: Download and Extract Stock
+      - name: Download and Prepare Stock
         run: |
           mkdir -p workdir/output
           cd workdir
-          wget -O stock_rom.zip "${{ github.event.inputs.stock_url }}"
+          echo "Downloading ROM..."
+          wget -q --show-progress -O stock_rom.zip "${{ github.event.inputs.stock_url }}"
+          
+          echo "Extracting partitions..."
           unzip stock_rom.zip
           tar -xf AP_*.tar.md5 || tar -xf AP_*.tar || true
           lz4 -d super.img.lz4 super.img 2>/dev/null || true
           
-          # تحويل السوبر لـ Raw وحفظ الحجم الأصلي
+          # تحويل السوبر لـ Raw وأخذ الحجم الحقيقي بدقة للموديل T509N
           simg2img super.img super_raw.img
           echo "ORIGINAL_SUPER_SIZE=$(stat -c%s super_raw.img)" >> $GITHUB_ENV
-          rm -f super.img super.img.lz4 AP_*.tar*
+          rm -f super.img super.img.lz4 AP_*.tar* stock_rom.zip
 
-      - name: Unpack and Fix Partitions
+      - name: Unpack and Fix Sparse Images
         run: |
           cd workdir
           mkdir -p unpacked
           python3 /opt/lpunpack/lpunpack.py super_raw.img unpacked/
           
-          # الكود السحري: تحويل كل الأقسام المستخرجة لـ Raw
-          # ده هيحل مشكلة "Invalid sparse file format"
-          echo "Fixing partition formats..."
+          # ✅ الكود الحاسم: تحويل كل الأقسام لـ Raw قبل الدمج
+          echo "Checking for Sparse headers and fixing them..."
           for img in unpacked/*.img; do
-            simg2img "$img" "${img}.raw" 2>/dev/null && mv "${img}.raw" "$img" || echo "$img is already raw"
+            if [ -f "$img" ]; then
+              simg2img "$img" "${img}.raw" 2>/dev/null && mv "${img}.raw" "$img" || echo "$img is already raw"
+            fi
           done
 
-      - name: Rebuild Super
+      - name: Rebuild Super Image
         run: |
           cd workdir
           
-          # جلب الأحجام الحقيقية بعد التحويل لـ Raw
+          # قراءة الأحجام الحقيقية للأقسام
           SYSTEM_SIZE=$(stat -c%s "unpacked/system.img")
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
-          
-          # حجم السوبر اللي استخلصناه في الخطوة السابقة
           SUPER_SIZE=${{ env.ORIGINAL_SUPER_SIZE }}
           
+          echo "Building with Super Size: $SUPER_SIZE"
+
           LPMAKE_CMD="lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
             --device super:${SUPER_SIZE} \
             --group main:${SUPER_SIZE} \
@@ -83,7 +96,7 @@ jobs:
             --partition vendor:readonly:$VENDOR_SIZE:main --image vendor=unpacked/vendor.img \
             --partition product:readonly:$PRODUCT_SIZE:main --image product=unpacked/product.img"
 
-          # إضافة الأقسام الاختيارية لو وجدت
+          # إضافة الأقسام الإضافية ديناميكياً
           [ -f "unpacked/system_ext.img" ] && LPMAKE_CMD="$LPMAKE_CMD --partition system_ext:readonly=$(stat -c%s unpacked/system_ext.img):main --image system_ext=unpacked/system_ext.img"
           [ -f "unpacked/odm.img" ] && LPMAKE_CMD="$LPMAKE_CMD --partition odm:readonly=$(stat -c%s unpacked/odm.img):main --image odm=unpacked/odm.img"
 
@@ -91,13 +104,14 @@ jobs:
           
           eval $LPMAKE_CMD
 
-      - name: Finalize
+      - name: Finalize Odin Package
         run: |
           cd workdir/output
           tar -cvf SM-T509N_GSI_Super.tar super_gsi.img
-          
-      - name: Upload
+          echo "Odin flashable TAR created."
+
+      - name: Upload Build
         uses: actions/upload-artifact@v4
         with:
-          name: SM-T509N-GSI-Super
+          name: SM-T509N-GSI-Super-Final
           path: workdir/output/*.tar
