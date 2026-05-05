@@ -51,7 +51,6 @@ jobs:
             -DANDROID_TOOLS_USE_BUNDLED_PROTOBUF=ON
           ninja -C build lpmake
 
-          # ✅ إيجاد lpmake في أي مسار داخل build
           LPMAKE_BIN=$(find /opt/android-tools/build -name "lpmake" -type f | head -1)
           echo "Found lpmake at: $LPMAKE_BIN"
           sudo cp "$LPMAKE_BIN" /usr/local/bin/lpmake
@@ -118,9 +117,9 @@ jobs:
             TOTAL=$((TOTAL + ODM_SIZE))
           fi
 
-          # إضافة 5% هامش أمان وتقريب لأقرب مضاعف لـ 512
+          # إضافة 5% هامش أمان وتقريب لأقرب مضاعف لـ 4096
           SUPER_SIZE=$(echo "$TOTAL * 105 / 100" | bc)
-          SUPER_SIZE=$(( (SUPER_SIZE + 511) / 512 * 512 ))
+          SUPER_SIZE=$(( (SUPER_SIZE + 4095) / 4096 * 4096 ))
 
           echo "Total partitions size: $TOTAL"
           echo "Super size (with margin): $SUPER_SIZE"
