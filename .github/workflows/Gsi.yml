@@ -25,7 +25,7 @@ jobs:
             cmake ninja-build \
             libssl-dev libbrotli-dev zlib1g-dev \
             libfmt-dev libusb-1.0-0-dev \
-            libprotobuf-dev protobuf-compiler
+            libprotobuf-dev protobuf-compiler bc
 
           git config --global user.email "ci@github-actions.local"
           git config --global user.name "GitHub Actions"
@@ -100,28 +100,45 @@ jobs:
           VENDOR_SIZE=$(stat -c%s "unpacked/vendor.img")
           PRODUCT_SIZE=$(stat -c%s "unpacked/product.img")
 
+          TOTAL=$((SYSTEM_SIZE + VENDOR_SIZE + PRODUCT_SIZE))
+
           echo "system:  $SYSTEM_SIZE"
           echo "vendor:  $VENDOR_SIZE"
           echo "product: $PRODUCT_SIZE"
 
+          if [ -f "unpacked/system_ext.img" ]; then
+            SYSTEM_EXT_SIZE=$(stat -c%s "unpacked/system_ext.img")
+            echo "system_ext: $SYSTEM_EXT_SIZE"
+            TOTAL=$((TOTAL + SYSTEM_EXT_SIZE))
+          fi
+
+          if [ -f "unpacked/odm.img" ]; then
+            ODM_SIZE=$(stat -c%s "unpacked/odm.img")
+            echo "odm: $ODM_SIZE"
+            TOTAL=$((TOTAL + ODM_SIZE))
+          fi
+
+          # إضافة 5% هامش أمان وتقريب لأقرب مضاعف لـ 512
+          SUPER_SIZE=$(echo "$TOTAL * 105 / 100" | bc)
+          SUPER_SIZE=$(( (SUPER_SIZE + 511) / 512 * 512 ))
+
+          echo "Total partitions size: $TOTAL"
+          echo "Super size (with margin): $SUPER_SIZE"
+
           LPMAKE_CMD="lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
-            --device super:4294967296 \
-            --group main:4294967296 \
+            --device super:${SUPER_SIZE} \
+            --group main:${SUPER_SIZE} \
             --partition system:readonly:$SYSTEM_SIZE:main --image system=unpacked/system.img \
             --partition vendor:readonly:$VENDOR_SIZE:main --image vendor=unpacked/vendor.img \
             --partition product:readonly:$PRODUCT_SIZE:main --image product=unpacked/product.img"
 
           if [ -f "unpacked/system_ext.img" ]; then
-            SYSTEM_EXT_SIZE=$(stat -c%s "unpacked/system_ext.img")
-            echo "system_ext: $SYSTEM_EXT_SIZE"
             LPMAKE_CMD="$LPMAKE_CMD \
               --partition system_ext:readonly:$SYSTEM_EXT_SIZE:main \
               --image system_ext=unpacked/system_ext.img"
           fi
 
           if [ -f "unpacked/odm.img" ]; then
-            ODM_SIZE=$(stat -c%s "unpacked/odm.img")
-            echo "odm: $ODM_SIZE"
             LPMAKE_CMD="$LPMAKE_CMD \
               --partition odm:readonly:$ODM_SIZE:main \
               --image odm=unpacked/odm.img"
