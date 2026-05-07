@@ -1,10 +1,10 @@
 """
 ╔══════════════════════════════════════════════╗
 ║     AKRO EKO TURBO - TWRP Bot v3.0          ║
-║     مع إصلاح الكودنايم + MediaFire          ║
+║     مع إصلاح MediaFire + التحقق من الملف    ║
 ╚══════════════════════════════════════════════╝
 
-pip install pyTelegramBotAPI requests yt-dlp gdown beautifulsoup4 lxml twrpdtgen
+pip install pyTelegramBotAPI requests yt-dlp gdown beautifulsoup4 lxml
 """
 
 import os, re, shutil, subprocess, threading, time
@@ -66,6 +66,13 @@ def detect_source(url: str) -> str:
 #  ✅ التحقق من صحة الملف المحمَّل
 # ══════════════════════════════════════════════════════════════════════════════
 def validate_file(path: str) -> str:
+    """
+    يتحقق أن الملف:
+    1. موجود وليس فارغاً
+    2. حجمه > 1MB
+    3. ليس HTML (أي لم يحدث redirect لصفحة ويب)
+    يُرجع رسالة الخطأ أو None إذا كان الملف صحيحاً
+    """
     if not os.path.exists(path):
         return "الملف غير موجود بعد التحميل."
 
@@ -77,6 +84,7 @@ def validate_file(path: str) -> str:
         return (f"الملف صغير جداً ({size/1024:.1f} KB) — "
                 f"على الأرجح صفحة HTML وليس ريكفري حقيقي.")
 
+    # تحقق من أول bytes — HTML يبدأ بـ <!DOCTYPE أو <html
     with open(path, 'rb') as f:
         header = f.read(512)
     text_start = header[:20].lower()
@@ -84,15 +92,22 @@ def validate_file(path: str) -> str:
         return ("الرابط أعاد صفحة HTML بدل الملف.\n"
                 "تأكد أن الرابط رابط تحميل مباشر وليس صفحة موقع.")
 
-    return None
+    return None  # الملف صحيح
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  🌐 MediaFire Scraper
+#  🌐 MediaFire Scraper — يستخرج الرابط المباشر
 # ══════════════════════════════════════════════════════════════════════════════
 def resolve_mediafire(url: str) -> str:
+    """
+    يفتح صفحة MediaFire ويستخرج رابط التحميل المباشر الحقيقي.
+    يدعم:
+      - https://www.mediafire.com/file/XXXXX/filename/file
+      - https://download1321.mediafire.com/... (مباشر)
+    """
+    # إذا كان رابطاً مباشراً من download*.mediafire.com
     if re.search(r'download\d+\.mediafire\.com', url):
-        return url
+        return url  # هو بالفعل مباشر
 
     try:
         resp = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
@@ -101,17 +116,27 @@ def resolve_mediafire(url: str) -> str:
         raise RuntimeError(f"فشل فتح صفحة MediaFire: {e}")
 
     soup = BeautifulSoup(resp.text, 'lxml')
+
+    # طريقة 1: زر التحميل الرئيسي
     btn = soup.find('a', {'id': 'downloadButton'})
     if btn and btn.get('href'):
         return btn['href']
 
+    # طريقة 2: أي رابط مباشر لـ download*.mediafire
     match = re.search(r'(https://download\d+\.mediafire\.com/[^\s"\'<>]+)', resp.text)
     if match:
         return match.group(1)
 
+    # طريقة 3: og:url أو canonical link
+    og = soup.find('meta', property='og:url')
+    if og and 'mediafire.com' in (og.get('content', '')):
+        # جرب مرة أخرى على الرابط المُنظَّف
+        pass
+
     raise RuntimeError(
         "لم أتمكن من استخراج رابط التحميل من MediaFire.\n"
-        "تأكد أن الرابط عام وغير محمي بكلمة مرور."
+        "تأكد أن الرابط عام وغير محمي بكلمة مرور.\n"
+        "جرب الرفع على gofile.io أو Google Drive."
     )
 
 
@@ -189,72 +214,93 @@ def download_ytdlp(url: str, dest_dir: str, progress_cb=None) -> str:
                 [os.path.join(dest_dir, f) for f in os.listdir(dest_dir)],
                 key=os.path.getmtime, reverse=True)
             filename = files[0] if files else None
+        if not filename:
+            raise RuntimeError("yt-dlp: لم يُنزَّل أي ملف.")
     return filename
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  🧠 التحميل الذكي مع fallback
+# ══════════════════════════════════════════════════════════════════════════════
 def smart_download(url: str, work_dir: str, progress_cb=None) -> str:
     source   = detect_source(url)
     rec_dir  = os.path.join(work_dir, 'recovery')
     os.makedirs(rec_dir, exist_ok=True)
     dest     = os.path.join(rec_dir, 'recovery.img')
 
+    # ── Google Drive ──────────────────────────────────────────────────────────
     if source == 'gdrive':
         progress_cb and progress_cb("☁️ Google Drive — جارٍ التحميل...")
         download_gdrive(url, dest)
+
+    # ── Mega.nz ───────────────────────────────────────────────────────────────
     elif source == 'mega':
         progress_cb and progress_cb("☁️ Mega.nz — جارٍ التحميل...")
         dl = download_mega(url, rec_dir)
-        if dl != dest and os.path.exists(dl): shutil.move(dl, dest)
+        if dl != dest and os.path.exists(dl):
+            shutil.move(dl, dest)
+
+    # ── MediaFire (يحتاج scraping) ────────────────────────────────────────────
     elif source == 'mediafire':
-        progress_cb and progress_cb("🔍 MediaFire — جارٍ استخراج الرابط...")
+        progress_cb and progress_cb("🔍 MediaFire — جارٍ استخراج رابط التحميل...")
         real_url = resolve_mediafire(url)
+        progress_cb and progress_cb(f"✅ رابط مباشر مستخرج\n⬇️ جارٍ التحميل...")
         download_direct(real_url, dest, progress_cb)
+
+    # ── رابط مباشر + fallback على yt-dlp ─────────────────────────────────────
     elif source == 'direct':
         progress_cb and progress_cb("🔗 رابط مباشر — جارٍ التحميل...")
         try:
             download_direct(url, dest, progress_cb)
             err = validate_file(dest)
             if err:
+                # الرابط المباشر فشل → جرب yt-dlp
+                progress_cb and progress_cb(
+                    f"⚠️ الرابط المباشر أعطى ملفاً خاطئاً.\n"
+                    f"🔄 جارٍ المحاولة عبر yt-dlp...")
                 if os.path.exists(dest): os.remove(dest)
                 dl = download_ytdlp(url, rec_dir, progress_cb)
-                if dl != dest and os.path.exists(dl): shutil.move(dl, dest)
-        except Exception:
-            dl = download_ytdlp(url, rec_dir, progress_cb)
-            if dl != dest and os.path.exists(dl): shutil.move(dl, dest)
-    else:
-        progress_cb and progress_cb("🌐 yt-dlp — جارٍ التحميل...")
-        dl = download_ytdlp(url, rec_dir, progress_cb)
-        if dl != dest and os.path.exists(dl): shutil.move(dl, dest)
+                if dl != dest and os.path.exists(dl):
+                    shutil.move(dl, dest)
+        except requests.HTTPError as e:
+            if '404' in str(e) or '403' in str(e):
+                raise RuntimeError(
+                    f"❌ الرابط لا يعمل ({e.response.status_code}).\n"
+                    "تأكد أن الرابط صحيح ومتاح للعموم.\n"
+                    "جرب رفع الملف على gofile.io أو Google Drive.")
+            raise
 
+    # ── yt-dlp (1800+ موقع) ───────────────────────────────────────────────────
+    else:
+        progress_cb and progress_cb("🌐 yt-dlp (1800+ موقع) — جارٍ التحميل...")
+        dl = download_ytdlp(url, rec_dir, progress_cb)
+        if dl != dest and os.path.exists(dl):
+            shutil.move(dl, dest)
+
+    # ── التحقق النهائي من الملف ──────────────────────────────────────────────
     err = validate_file(dest)
-    if err: raise RuntimeError(f"⚠️ الملف غير صالح:\n{err}")
+    if err:
+        raise RuntimeError(f"⚠️ الملف غير صالح:\n{err}")
+
     return dest
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ⚙️ توليد Device Tree (مع إصلاح الـ Codename و SyntaxError)
+#  ⚙️ توليد Device Tree
 # ══════════════════════════════════════════════════════════════════════════════
 def generate_tree(rec_path: str, output_path: str):
-    """
-    نسخة محسنة تستخدم Lambda لتجنب أخطاء الـ Syntax والـ AttributeError.
-    """
-    # كود الحقن المحسن: يبحث في build_prop.props بدلاً من props المباشرة
-    patch_code = (
-        "import sebaubuntu_libs.libandroid.device_info as d; "
-        "orig = d.DeviceInfo.get_first_prop; "
-        "d.DeviceInfo.get_first_prop = lambda self, props: next((self.build_prop.props[p] for p in props if p in self.build_prop.props), 'akro_device'); "
-        "from twrpdtgen.__main__ import main; main()"
-    )
-
     result = subprocess.run(
-        ['python3', '-c', patch_code, rec_path, '-o', output_path],
+        ['python3', '-m', 'twrpdtgen', rec_path, '-o', output_path],
         capture_output=True, text=True, timeout=300
     )
-    
     if result.returncode != 0:
         stderr = result.stderr
+        # تحليل الخطأ لإعطاء رسالة أوضح
         if 'unpackimg' in stderr or 'aik' in stderr:
-            raise RuntimeError("فشل فك تشفير الـ recovery.img (الملف تالف أو غير مدعوم).")
+            raise RuntimeError(
+                "فشل فك تشفير الـ recovery.img\n"
+                "السبب المحتمل: الملف تالف أو نوعه غير مدعوم.\n"
+                f"التفاصيل: {stderr[-300:]}")
         raise RuntimeError(f"فشل twrpdtgen:\n{stderr[-400:]}")
 
 
@@ -279,40 +325,62 @@ def process_recovery(message, url: str):
     def progress(text):
         nonlocal status_msg
         try:
-            if status_msg: bot.edit_message_text(text, chat_id, status_msg.message_id)
-            else: status_msg = bot.send_message(chat_id, text)
-        except Exception: pass
+            if status_msg:
+                bot.edit_message_text(text, chat_id, status_msg.message_id)
+            else:
+                status_msg = bot.send_message(chat_id, text)
+        except Exception:
+            pass
 
     try:
         os.makedirs(work_dir, exist_ok=True)
         output_path = os.path.join(work_dir, 'output')
 
+        # 1. تحميل ذكي مع تحقق
         rec_path = smart_download(url, work_dir, progress_cb=progress)
-        size_mb = os.path.getsize(rec_path) / 1024 / 1024
-        progress(f"✅ تم التحميل ({size_mb:.1f} MB)\n⚙️ جارٍ توليد الـ Tree (تخطي الـ Codename)...")
 
+        size_mb = os.path.getsize(rec_path) / 1024 / 1024
+        progress(f"✅ تم التحميل ({size_mb:.1f} MB)\n⚙️ جارٍ توليد الـ Device Tree...")
+
+        # 2. توليد الـ Tree
         generate_tree(rec_path, output_path)
+
+        # 3. AKRO Patches
         apply_patches(output_path)
 
+        # 4. ضغط
         progress("📦 جارٍ ضغط الملفات...")
         shutil.make_archive(zip_name, 'zip', output_path)
-        
+        if not os.path.exists(zip_path):
+            raise RuntimeError("فشل إنشاء ملف ZIP.")
+
+        # 5. إرسال
         zip_mb = os.path.getsize(zip_path) / 1024 / 1024
+        progress("📤 جارٍ إرسال الملف...")
         with open(zip_path, 'rb') as f:
             bot.send_document(
                 chat_id, f,
                 caption=(f"✅ *TWRP Device Tree جاهز!*\n"
                          f"📦 الحجم: `{zip_mb:.2f} MB`\n"
-                         f"🛠 تم إصلاح مشكلات الـ Codename والـ Syntax تلقائياً"),
+                         f"🛠 بواسطة: *AKRO EKO TURBO v3*"),
                 parse_mode='Markdown')
 
-        if status_msg: bot.delete_message(chat_id, status_msg.message_id)
+        if status_msg:
+            try: bot.delete_message(chat_id, status_msg.message_id)
+            except: pass
 
     except Exception as e:
-        bot.send_message(chat_id, f"❌ *خطأ:*\n`{str(e)[:600]}`", parse_mode='Markdown')
+        err = str(e)
+        bot.send_message(chat_id,
+            f"❌ *خطأ:*\n`{err[:600]}`\n\n"
+            "💡 *نصيحة:* تأكد أن الرابط مباشر وعام، أو ارفع الملف على:\n"
+            "• gofile.io\n• drive.google.com\n• pixeldrain.com",
+            parse_mode='Markdown')
+
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
-        if os.path.exists(zip_path): os.remove(zip_path)
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -321,33 +389,93 @@ def process_recovery(message, url: str):
 
 @bot.message_handler(commands=['start', 'help'])
 def cmd_start(message):
+    caps = "\n".join([
+        f"{'✅' if YTDLP_OK else '❌'} yt-dlp (1800+ موقع)",
+        f"{'✅' if GDOWN_OK else '❌'} Google Drive",
+        f"{'✅' if MEGA_OK  else '❌'} Mega.nz",
+        "✅ MediaFire (scraping تلقائي)",
+        "✅ روابط مباشرة",
+        "✅ Telegram (حتى 20MB)",
+    ])
     bot.send_message(message.chat.id,
-        "⚡️ *AKRO EKO TURBO v3*\n"
-        "تم حل مشكلة الـ SyntaxError وتخطي الـ Codename بنجاح.\n\n"
-        "أرسل رابط الملف مباشرة أو استخدم `/url`.",
+        f"⚡️ *AKRO EKO TURBO v3*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🌐 *المواقع المدعومة:*\n{caps}\n\n"
+        "📤 *طرق الإرسال:*\n"
+        "1️⃣ ملف `.img` مباشر (حتى 20MB)\n"
+        "2️⃣ `/url <رابط>` من أي موقع\n"
+        "3️⃣ أرسل الرابط كنص عادي\n\n"
+        "💡 *أمثلة:*\n"
+        "`/url https://www.mediafire.com/file/XXX`\n"
+        "`/url https://drive.google.com/file/d/XXX`\n"
+        "`/url https://mega.nz/file/XXX`\n"
+        "`/url https://gofile.io/d/XXX`\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "🛠 بواسطة: *AKRO EKO TURBO*",
         parse_mode='Markdown')
+
 
 @bot.message_handler(commands=['url'])
 def cmd_url(message):
     parts = message.text.split(maxsplit=1)
-    if len(parts) < 2: return
-    url = parts[1].strip()
+    if len(parts) < 2 or not parts[1].strip().startswith('http'):
+        bot.reply_to(message, "📌 الاستخدام:\n`/url https://رابط-الريكفري`",
+                     parse_mode='Markdown')
+        return
+    url    = parts[1].strip()
+    source = detect_source(url)
+    labels = {'gdrive':'☁️ Google Drive','mega':'☁️ Mega.nz',
+              'mediafire':'📁 MediaFire','direct':'🔗 مباشر','ytdlp':'🌐 yt-dlp'}
+    bot.reply_to(message,
+        f"🔍 المصدر: *{labels[source]}*\n⏳ جارٍ المعالجة...",
+        parse_mode='Markdown')
     threading.Thread(target=process_recovery, args=(message, url), daemon=True).start()
+
 
 @bot.message_handler(content_types=['document'])
 def handle_file(message):
     doc = message.document
-    if not doc.file_name.endswith('.img'): return
-    if doc.file_size > TELEGRAM_LIMIT: return
-    info = bot.get_file(doc.file_id)
-    url  = f"https://api.telegram.org/file/bot{TOKEN}/{info.file_path}"
-    threading.Thread(target=process_recovery, args=(message, url), daemon=True).start()
+    if not doc.file_name.endswith('.img'):
+        bot.reply_to(message, "⚠️ أرسل ملفاً ينتهي بـ `.img` فقط.")
+        return
+    if doc.file_size > TELEGRAM_LIMIT:
+        mb = doc.file_size / 1024 / 1024
+        bot.reply_to(message,
+            f"⚠️ الملف *{mb:.1f}MB* — يتجاوز حد تيليجرام (20MB).\n\n"
+            "📌 ارفعه على أحد هذه المواقع وأرسل الرابط:\n"
+            "• gofile.io\n• drive.google.com\n• pixeldrain.com\n• mega.nz",
+            parse_mode='Markdown')
+        return
+    mb = doc.file_size / 1024 / 1024
+    bot.reply_to(message, f"📥 *{doc.file_name}* ({mb:.1f}MB)\n⏳ جارٍ المعالجة...",
+                 parse_mode='Markdown')
+    try:
+        info = bot.get_file(doc.file_id)
+        url  = f"https://api.telegram.org/file/bot{TOKEN}/{info.file_path}"
+        threading.Thread(target=process_recovery, args=(message, url), daemon=True).start()
+    except Exception as e:
+        bot.reply_to(message, f"❌ فشل: `{e}`", parse_mode='Markdown')
+
 
 @bot.message_handler(func=lambda m: m.text and re.search(r'https?://\S+', m.text))
 def handle_raw_url(message):
     match = re.search(r'(https?://\S+)', message.text)
-    if match:
-        threading.Thread(target=process_recovery, args=(message, match.group(1)), daemon=True).start()
+    if not match:
+        return
+    url    = match.group(1)
+    source = detect_source(url)
+    labels = {'gdrive':'☁️ Google Drive','mega':'☁️ Mega.nz',
+              'mediafire':'📁 MediaFire','direct':'🔗 مباشر','ytdlp':'🌐 yt-dlp'}
+    bot.reply_to(message,
+        f"🔍 اكتشفت رابطاً ({labels[source]})\n⏳ جارٍ المعالجة...",
+        parse_mode='Markdown')
+    threading.Thread(target=process_recovery, args=(message, url), daemon=True).start()
 
-print("⚡️ AKRO EKO TURBO v3.0 (Fixed) يعمل الآن...")
-bot.infinity_polling()
+
+# ══════════════════════════════════════════════════════════════════════════════
+print("⚡️ AKRO EKO TURBO v3.0 يعمل...")
+print(f"   yt-dlp      : {'✅' if YTDLP_OK else '❌'}")
+print(f"   gdown       : {'✅' if GDOWN_OK else '❌'}")
+print(f"   mega.py     : {'✅' if MEGA_OK  else '❌'}")
+print(f"   MediaFire   : ✅ (scraping)")
+bot.infinity_polling(timeout=60, long_polling_timeout=60)
