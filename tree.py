@@ -236,26 +236,33 @@ def smart_download(url: str, work_dir: str, progress_cb=None) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 def generate_tree(rec_path: str, output_path: str):
     """
-    نسخة معدلة تستخدم Monkey Patch لحل مشكلة AssertionError: Property ro.product.system.device
+    إصلاح SyntaxError عبر كتابة كود الحقن بطريقة السطر الواحد الصحيحة برمجياً
     """
-    # كود حقن لإصلاح المكتبة وتجاهل نقص الـ Codename
+    # الكود المحقون معدل ليعمل كـ One-liner بدون أخطاء Indentation
     patch_code = (
         "import sebaubuntu_libs.libandroid.device_info as d; "
         "orig = d.DeviceInfo.get_first_prop; "
         "def patched(self, props): "
-        "  try: return orig(self, props) "
-        "  except: "
-        "    for p in props: "
-        "       if p in self.props: return self.props[p] "
-        "    return 'akro_device'; "
+        "try: return orig(self, props) "
+        "except: "
+        "for p in props: "
+        "if p in self.props: return self.props[p] "
+        "return 'akro_device'; "
         "d.DeviceInfo.get_first_prop = patched; "
         "from twrpdtgen.__main__ import main; main()"
-    )
+    ).replace('\n', '') # التأكد من عدم وجود سطور زائدة
 
-    result = subprocess.run(
-        ['python3', '-c', patch_code, rec_path, '-o', output_path],
-        capture_output=True, text=True, timeout=300
-    )
+    # استخدام الصيغة الأكثر أماناً للحقن البرمجي
+    full_cmd = [
+        'python3', '-c', 
+        "import sebaubuntu_libs.libandroid.device_info as d; "
+        "orig = d.DeviceInfo.get_first_prop; "
+        "d.DeviceInfo.get_first_prop = lambda self, props: next((self.props[p] for p in props if p in self.props), 'akro_device'); "
+        "from twrpdtgen.__main__ import main; main()",
+        rec_path, '-o', output_path
+    ]
+
+    result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=300)
     
     if result.returncode != 0:
         stderr = result.stderr
@@ -309,7 +316,7 @@ def process_recovery(message, url: str):
                 chat_id, f,
                 caption=(f"✅ *TWRP Device Tree جاهز!*\n"
                          f"📦 الحجم: `{zip_mb:.2f} MB`\n"
-                         f"🛠 تم إصلاح مشكلة الـ Codename تلقائياً"),
+                         f"🛠 تم إصلاح مشكلة الـ Codename و SyntaxError"),
                 parse_mode='Markdown')
 
         if status_msg: bot.delete_message(chat_id, status_msg.message_id)
@@ -329,7 +336,7 @@ def process_recovery(message, url: str):
 def cmd_start(message):
     bot.send_message(message.chat.id,
         "⚡️ *AKRO EKO TURBO v3*\n"
-        "تم تحديث البوت لتخطي أخطاء الـ `build.prop` المفقودة.\n\n"
+        "تم حل مشكلة الـ SyntaxError وتخطي الـ Codename.\n\n"
         "أرسل رابط الملف مباشرة أو استخدم `/url`.",
         parse_mode='Markdown')
 
@@ -355,5 +362,5 @@ def handle_raw_url(message):
     if match:
         threading.Thread(target=process_recovery, args=(message, match.group(1)), daemon=True).start()
 
-print("⚡️ AKRO EKO TURBO v3.0 (Fixed) يعمل...")
+print("⚡️ AKRO EKO TURBO v3.0 (Fixed Syntax) يعمل...")
 bot.infinity_polling()
