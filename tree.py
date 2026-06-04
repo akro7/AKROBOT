@@ -29,7 +29,7 @@ except ImportError:
     MEGA_OK = False
 
 # ─── إعدادات ──────────────────────────────────────────────────────────────────
-TOKEN          = '8067365706:AAFCnoBEiKB8ghHrN1Zo1qO_rKoimzrmcoE'
+TOKEN          = '8067365706:AAHFQ2gJk4COdq3QjwVomoxXxPPbbYw7SSc'
 bot            = telebot.TeleBot(TOKEN, threaded=True)
 TELEGRAM_LIMIT = 20 * 1024 * 1024   # 20 MB
 MIN_IMG_SIZE   = 1 * 1024 * 1024    # 1 MB حد أدنى للملف الصحيح
